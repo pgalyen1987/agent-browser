@@ -1,0 +1,6 @@
+<!doctype html><html><head><title>Slow</title></head><body><main><h1>Report</h1><div id="spin">Loading</div></main>
+<script>
+const q = new URLSearchParams(location.search);
+if (q.get('mode') === 'busy') setInterval(() => { document.getElementById('spin').textContent += '.'; }, 150);
+if (q.get('mode') === 'late') setTimeout(() => { const b = document.createElement('button'); b.textContent = 'Download report'; document.querySelector('main').appendChild(b); }, 1500);
+</script></body></html>

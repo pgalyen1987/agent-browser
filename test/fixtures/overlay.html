@@ -1,0 +1,13 @@
+<!doctype html><html><head><title>Checkout</title><style>
+html,body{margin:0;height:100%;overflow:hidden;font-family:sans-serif}
+#cookies{position:fixed;left:0;right:0;bottom:0;height:160px;background:#222;color:#fff;padding:20px;box-sizing:border-box;z-index:10}
+#chat{position:fixed;left:0;top:0;width:360px;height:200px;background:#06c;z-index:20;color:#fff}
+#go{position:absolute;bottom:40px;left:40px}
+#help{position:absolute;top:40px;left:40px}
+</style></head><body>
+<main><h1 style="margin-left:400px">Checkout</h1><p style="margin-left:400px">Review your order, then continue.</p>
+<button id="help" onclick="document.body.dataset.help='1'">Help</button>
+<button id="go" onclick="document.title='Paid'">Continue to payment</button></main>
+<div id="cookies">We use cookies. <button onclick="this.parentNode.remove()">Accept all</button></div>
+<div id="chat">Chat with us, we reply in minutes</div>
+</body></html>

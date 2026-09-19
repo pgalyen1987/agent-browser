@@ -1,0 +1,19 @@
+{
+  "name": "agent-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A browser layer for AI agents over Playwright: compact snapshots, overlay-proof clicks, loading-vs-absent waits, secrets that never reach the transcript. Internal tooling.",
+  "type": "module",
+  "bin": {
+    "agent-browser": "src/server.mjs"
+  },
+  "scripts": {
+    "test": "node --test --test-timeout=60000 test/*.test.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "playwright": "1.57",
+    "zod": "^4.6.5"
+  }
+}
