@@ -32,12 +32,21 @@ export async function session({ fresh = false } = {}) {
   return page;
 }
 
-// alert/confirm/prompt dialogs would block the page; accept them and report the text next reply
+// Dialogs would block the page. Alerts are acknowledged. A confirm is how a page asks "are you
+// sure?" before something destructive, so it is DISMISSED unless the click said confirm: true;
+// either way the reply says what it asked.
 const dialogs = [];
-export const takeDialogs = () => dialogs.splice(0).map((d) => `a ${d.type} said: "${d.message}" (accepted)`);
+let acceptNextConfirm = false;
+export const takeDialogs = () => dialogs.splice(0).map((d) => `a ${d.type} said: "${d.message}" (${d.outcome})`);
 
 function watch(p) {
-  p.on("dialog", async (d) => { dialogs.push({ type: d.type(), message: d.message().slice(0, 200) }); await d.accept().catch(() => {}); });
+  p.on("dialog", async (d) => {
+    const type = d.type();
+    const accept = type === "alert" || type === "beforeunload" || (type === "confirm" && acceptNextConfirm);
+    if (type === "confirm") acceptNextConfirm = false;
+    dialogs.push({ type, message: d.message().slice(0, 200), outcome: accept ? "accepted" : "dismissed; click again with confirm: true to accept it" });
+    await (accept ? d.accept() : d.dismiss()).catch(() => {});
+  });
   p.on("request", () => inflight++);
   const done = () => { inflight = Math.max(0, inflight - 1); };
   p.on("requestfinished", done);
@@ -156,6 +165,7 @@ async function after(p, before, notes, { snap = true } = {}) {
 
 export async function click(target, opts = {}) {
   const p = await session();
+  acceptNextConfirm = !!opts.confirm;
   const loc = await locate(target);
   if (!loc) return `no visible element matches ${JSON.stringify(target)}\n\n${await snapshot({ find: /^e\d+$/.test(target) ? "" : String(target).split(/\s+/).pop(), limit: 20 })}`;
   const what = await describe(loc);

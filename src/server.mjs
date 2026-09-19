@@ -29,8 +29,8 @@ server.registerTool("snapshot", {
 
 server.registerTool("click", {
   description: "Click an element. Scrolls to it, and if an overlay (cookie bar, chat widget, sticky footer) covers it, dismisses or hides that first and says so. Returns what changed and a fresh snapshot.",
-  inputSchema: { target, snap: z.boolean().optional().describe("include the snapshot after (default true)") },
-}, safe(({ target: t, snap }) => b.click(t, { snap: snap !== false })));
+  inputSchema: { target, snap: z.boolean().optional().describe("include the snapshot after (default true)"), confirm: z.boolean().optional().describe("accept an \"are you sure?\" confirm this click raises (dismissed by default)") },
+}, safe(({ target: t, snap, confirm }) => b.click(t, { snap: snap !== false, confirm })));
 
 server.registerTool("fill", {
   description: "Type a value into a field (replaces what's there). submit presses Enter after.",
