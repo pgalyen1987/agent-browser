@@ -47,6 +47,11 @@ server.registerTool("select", {
   inputSchema: { target, option: z.string() },
 }, safe(({ target: t, option }) => b.select(t, option)));
 
+server.registerTool("upload", {
+  description: "Attach local file(s) to a file input, or to an Upload button that opens a file chooser.",
+  inputSchema: { target, paths: z.array(z.string()).min(1) },
+}, safe(({ target: t, paths }) => b.upload(t, paths)));
+
 server.registerTool("press", {
   description: "Press a key on the page (Enter, Escape, Tab, ArrowDown, Control+A...).",
   inputSchema: { key: z.string() },

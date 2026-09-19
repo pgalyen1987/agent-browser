@@ -1,0 +1,5 @@
+<!doctype html><html><head><title>Upload</title></head><body><main><h1>Product files</h1>
+<input id="f" type="file" style="display:none" onchange="document.getElementById('name').textContent=this.files[0].name">
+<button onclick="document.getElementById('f').click()">Upload a file</button>
+<button onclick="if (confirm('Replace the current file?')) document.title='Replaced'">Replace</button>
+<p id="name"></p></main></body></html>

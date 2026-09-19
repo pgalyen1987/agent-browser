@@ -71,3 +71,14 @@ test("a missing target answers in words with nearby options", async () => {
   await b.open(page("form.html"));
   assert.match(await b.click('button "Delete account"'), /no visible element matches/);
 });
+
+test("upload through a styled button, and a confirm dialog is accepted and reported", async () => {
+  await b.open(page("upload.html"));
+  const f = join(dir, "bundle.zip");
+  writeFileSync(f, "zip");
+  assert.match(await b.upload('button "Upload a file"', [f]), /attached bundle.zip/);
+  assert.equal(await b.js("document.getElementById('name').textContent"), "bundle.zip");
+  const out = await b.click('button "Replace"', { snap: false });
+  assert.match(out, /a confirm said: "Replace the current file\?" \(accepted\)/);
+  assert.equal(await b.js("document.title"), "Replaced");
+});

@@ -32,7 +32,12 @@ export async function session({ fresh = false } = {}) {
   return page;
 }
 
+// alert/confirm/prompt dialogs would block the page; accept them and report the text next reply
+const dialogs = [];
+export const takeDialogs = () => dialogs.splice(0).map((d) => `a ${d.type} said: "${d.message}" (accepted)`);
+
 function watch(p) {
+  p.on("dialog", async (d) => { dialogs.push({ type: d.type(), message: d.message().slice(0, 200) }); await d.accept().catch(() => {}); });
   p.on("request", () => inflight++);
   const done = () => { inflight = Math.max(0, inflight - 1); };
   p.on("requestfinished", done);
@@ -143,7 +148,7 @@ async function clearPath(p, loc) {
 
 async function after(p, before, notes, { snap = true } = {}) {
   await settle(p, 3000);
-  const out = [...notes];
+  const out = [...notes, ...takeDialogs()];
   if (p.url() !== before) out.push(`now at ${p.url()}`);
   if (snap) out.push("", await snapshot({ limit: 40 }));
   return out.join("\n");
@@ -206,6 +211,26 @@ export async function select(target, option) {
   if (!loc) return `no visible select matches ${JSON.stringify(target)}`;
   const picked = await loc.selectOption({ label: option }).catch(() => loc.selectOption(option)).catch((e) => e);
   return picked instanceof Error ? `could not pick ${JSON.stringify(option)}: ${picked.message.split("\n")[0]}` : `picked ${JSON.stringify(option)} in ${await describe(loc)}`;
+}
+
+/** Attach local files to a file input (or the input behind an "Upload" button). */
+export async function upload(target, paths) {
+  const p = await session();
+  let loc = await locate(target);
+  if (!loc) return `no visible element matches ${JSON.stringify(target)}`;
+  const isFile = await loc.evaluate((el) => el.tagName === "INPUT" && el.type === "file").catch(() => false);
+  if (!isFile) {
+    // a styled button: the real input is usually hidden next to it, or opens a chooser on click
+    const chooser = p.waitForEvent("filechooser", { timeout: 5000 }).catch(() => null);
+    await loc.click().catch(() => {});
+    const fc = await chooser;
+    if (!fc) return `${await describe(loc)} is not a file input and didn't open a file chooser`;
+    await fc.setFiles(paths);
+  } else {
+    await loc.setInputFiles(paths);
+  }
+  await settle(p, 3000);
+  return `attached ${paths.map((x) => x.split("/").pop()).join(", ")}`;
 }
 
 export async function press(key) {

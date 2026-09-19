@@ -18,7 +18,7 @@ built to test pages you wrote; an agent is working pages it has never seen.
 | Auth expiry shows up as a redirect | Snapshots start with `auth: this looks like a login page` when the page is one. |
 | Wizards need "Next" found by hand every step | `next` presses the page's forward button (Next, Continue, Submit, Done...), preferring one in a form or dialog. |
 
-Other tools: `fill`, `select`, `press`, `back`, `screenshot`, `js` (the escape hatch), `close`.
+Other tools: `fill`, `select`, `upload` (file inputs, or an Upload button that opens a chooser), `press`, `back`, `screenshot`, `js` (the escape hatch), `close`. Alert/confirm dialogs are accepted and their text reported in the next reply, so they never block a page silently.
 
 ## Notes
 
