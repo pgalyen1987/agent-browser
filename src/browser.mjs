@@ -93,8 +93,15 @@ export async function snapshot(opts = {}) {
  */
 async function settle(p, ms = 2000) {
   await p.waitForLoadState("domcontentloaded", { timeout: ms }).catch(() => {});
-  const end = Date.now() + ms;
+  const start = Date.now(), end = start + ms;
+  // A FLOOR BEFORE THE EARLY EXIT CAN FIRE. Straight after first paint there is a window where
+  // the DOM is quiet and nothing has been requested yet, because the page's own script has not
+  // run its fetches. Exiting there returns a shell: the boss dashboard came back reading
+  // "Scanning ~ ..." with every data card still empty. 400ms is enough for a framework to mount
+  // and fire its first request, after which the lastReq check keeps us waiting honestly.
+  const FLOOR = 400;
   while (Date.now() < end) {
+    if (Date.now() - start < FLOOR) { await p.waitForTimeout(60); continue; }
     const quiet = await p.evaluate(() => Date.now() - (window.__abMut || 0)).catch(() => 9999);
     // 250ms since the last DOM change AND since the last request STARTED. Both are timestamps,
     // so neither can get stuck the way a counter does; a page with a heartbeat settles between
