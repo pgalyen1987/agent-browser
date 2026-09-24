@@ -18,7 +18,23 @@ let lastReq = 0;
 
 /** A persistent context, so a login made once survives between sessions. Headless unless AB_HEADED=1. */
 export async function session({ fresh = false } = {}) {
-  if (ctx && !fresh) return page;
+  if (ctx && !fresh) {
+    // A CONTEXT CAN DIE UNDER US and the old code handed the dead handle back regardless, so
+    // every later call failed with "Target page, context or browser has been closed" - forever,
+    // with no recovery short of restarting the server. It happens for ordinary reasons: the
+    // browser crashes, another process takes the persistent profile, or anything calls close().
+    // Check the handle is alive, reuse a live tab if there is one, and only rebuild if not.
+    try {
+      if (page && !page.isClosed()) return page;
+      const live = ctx.pages().find((q) => !q.isClosed());
+      page = live || (await ctx.newPage());
+      watch(page);
+      return page;
+    } catch {
+      ctx = null;           // the context itself is gone; fall through and relaunch below
+      page = null;
+    }
+  }
   if (ctx) await ctx.close().catch(() => {});
   const opts = { headless: process.env.AB_HEADED !== "1", viewport: { width: 1280, height: 900 } };
   if (process.env.AB_EPHEMERAL === "1") {
