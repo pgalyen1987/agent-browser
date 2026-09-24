@@ -33,9 +33,17 @@ server.registerTool("click", {
 }, safe(({ target: t, snap, confirm }) => b.click(t, { snap: snap !== false, confirm })));
 
 server.registerTool("fill", {
-  description: "Type a value into a field (replaces what's there). submit presses Enter after.",
-  inputSchema: { target, value: z.string(), submit: z.boolean().optional() },
-}, safe(({ target: t, value, submit }) => b.fill(t, value, { submit })));
+  description: "Type into a field, or fill a whole form in ONE call with `fields`. Prefer `fields` for anything with more than one input: six separate calls cost six round-trips, and the round-trip is the slow part, not the typing. submit presses Enter after the last field.",
+  inputSchema: {
+    target: target.optional(),
+    value: z.string().optional(),
+    fields: z.array(z.object({
+      target: z.string().describe("a ref like e12, or a description like 'textbox \"Email\"'"),
+      value: z.string(),
+    })).optional().describe("fill many fields in one call, in order"),
+    submit: z.boolean().optional(),
+  },
+}, safe(({ target: t, value, submit, fields }) => b.fill(t, value, { submit, fields })));
 
 server.registerTool("fill_secret", {
   description: "Type a credential into a field by its NAME in ~/.config/rebel-studios/creds.env (e.g. STRIPE_SECRET_KEY). The value never appears in this conversation; later snapshots show the field as (secret).",

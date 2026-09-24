@@ -14,6 +14,7 @@ let ctx = null;
 let browser = null; // only in ephemeral mode, where the context doesn't own the browser
 let page = null;
 let inflight = 0;
+let lastReq = 0;
 
 /** A persistent context, so a login made once survives between sessions. Headless unless AB_HEADED=1. */
 export async function session({ fresh = false } = {}) {
@@ -47,7 +48,11 @@ function watch(p) {
     dialogs.push({ type, message: d.message().slice(0, 200), outcome: accept ? "accepted" : "dismissed; click again with confirm: true to accept it" });
     await (accept ? d.accept() : d.dismiss()).catch(() => {});
   });
-  p.on("request", () => inflight++);
+  // lastReq, not just the counter: a request cancelled by a navigation fires neither
+  // requestfinished nor requestfailed, so `inflight` leaks upward and never returns to 0 -
+  // measured, after a settle() keyed on `inflight === 0` hit its cap on every page including
+  // example.com. A timestamp cannot leak.
+  p.on("request", () => { inflight++; lastReq = Date.now(); });
   const done = () => { inflight = Math.max(0, inflight - 1); };
   p.on("requestfinished", done);
   p.on("requestfailed", done);
@@ -71,9 +76,32 @@ export async function snapshot(opts = {}) {
   return render(await p.evaluate(collect, opts), opts);
 }
 
-async function settle(p, ms = 4000) {
+/**
+ * Wait until the page is usable, which is NOT the same as networkidle.
+ *
+ * networkidle needs 500ms with no requests at all, so a page that polls, beacons analytics or
+ * holds a socket open never reaches it and burns the whole timeout every single navigation.
+ * Measured 2026-09-24: the boss dashboard finishes domcontentloaded in 116ms and then waits the
+ * full 4000ms for a silence that never arrives - a 34x tax - and docs.stripe.com does the same.
+ * Two of four real pages timed out; the two that did not still paid 500-1500ms, because 500ms of
+ * enforced silence is networkidle's floor by definition.
+ *
+ * So ask the two questions that actually decide whether a page can be driven: has the DOM
+ * stopped changing, and is anything still in flight. Both signals already exist (__abMut is set
+ * by a MutationObserver in the init script, inflight by the request hooks above). Returns as soon
+ * as they agree, rather than waiting out a clock.
+ */
+async function settle(p, ms = 2000) {
   await p.waitForLoadState("domcontentloaded", { timeout: ms }).catch(() => {});
-  await p.waitForLoadState("networkidle", { timeout: ms }).catch(() => {});
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const quiet = await p.evaluate(() => Date.now() - (window.__abMut || 0)).catch(() => 9999);
+    // 250ms since the last DOM change AND since the last request STARTED. Both are timestamps,
+    // so neither can get stuck the way a counter does; a page with a heartbeat settles between
+    // beats instead of never settling at all.
+    if (quiet >= 250 && Date.now() - lastReq >= 250) return;
+    await p.waitForTimeout(60);
+  }
 }
 
 export async function open(url) {
@@ -182,8 +210,40 @@ export async function click(target, opts = {}) {
   return after(p, before, [`clicked ${what}`, ...notes], opts);
 }
 
-export async function fill(target, value, { submit = false } = {}) {
+/**
+ * Type into one field, or into many in a single call.
+ *
+ * `fields` is the reason this exists. A six-field form used to cost six MCP round-trips, and the
+ * round-trip - model turn, transport, tool dispatch - dwarfs the typing. Filling them in one call
+ * turns a sign-up form from six exchanges into one. Each field is still located and cleared
+ * individually, so a batch behaves exactly like the single calls it replaces; the only thing
+ * removed is the waiting in between.
+ *
+ * A field that cannot be found does not abort the rest: the reply names which ones missed, so a
+ * partly-filled form can be finished rather than started over.
+ */
+export async function fill(target, value, { submit = false, fields = null } = {}) {
   const p = await session();
+
+  if (Array.isArray(fields) && fields.length) {
+    const done = [], missed = [];
+    for (const f of fields) {
+      const loc = await locate(f.target).catch(() => null);
+      if (!loc) { missed.push(f.target); continue; }
+      await clearPath(p, loc);
+      await loc.fill(String(f.value ?? "")).catch(() => missed.push(f.target));
+      done.push(await describe(loc));
+    }
+    const lines = [];
+    if (done.length) lines.push(`filled ${done.length}: ${done.join(", ")}`);
+    if (missed.length) lines.push(`no visible field matched: ${missed.map((m) => JSON.stringify(m)).join(", ")}`);
+    if (!submit) return lines.join("\n") || "nothing to fill";
+    const before = p.url();
+    const last = done.length ? await locate(fields[fields.length - 1].target).catch(() => null) : null;
+    if (last) await last.press("Enter");
+    return after(p, before, [...lines, "pressed Enter"]);
+  }
+
   const loc = await locate(target);
   if (!loc) return `no visible field matches ${JSON.stringify(target)}`;
   await clearPath(p, loc);
