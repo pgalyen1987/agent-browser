@@ -145,7 +145,12 @@ export function collect({ limit = 60, find = "", scope = "", maxText = 400 } = {
       currentBox = box;
       if (box) lines.push(`${containerName(box)}:`);
     }
-    lines.push(`${box ? "  " : ""}[${ref(el)}] ${role(el)} "${name}"${state(el)}`);
+    // THE ROLE IS OMITTED FOR LINKS, which are the default and by far the commonest: 88 of 103
+    // elements on the Wikipedia page and 60 of 60 on Hacker News. Spelling out "link" on each cost
+    // 12.4% of the whole snapshot to repeat the least surprising fact on the page. Everything that
+    // is NOT a plain link still names itself, which is the part that carries information.
+    const r = role(el);
+    lines.push(`${box ? "  " : ""}[${ref(el)}]${r === "link" ? "" : " " + r} "${name}"${state(el)}`);
     shown++;
     if (region && regionSeen.get(region) === PER_REGION) lines.push({ region }); // "… N more" goes here
   }
@@ -165,7 +170,12 @@ export function collect({ limit = 60, find = "", scope = "", maxText = 400 } = {
   }).slice(0, 2).map((el) => `overlay: "${clean(el.innerText, 80)}" covers ${Math.round((el.getBoundingClientRect().width * el.getBoundingClientRect().height * 100) / (innerWidth * innerHeight))}% of the screen`);
 
   const main = document.querySelector("main, [role=main], article") || document.body;
-  const text = clean(main.innerText, maxText);
+  // THE PROSE TAIL IS FOR ORIENTATION, and a page that already gives up a heading structure is
+  // oriented by that instead — the Wikipedia snapshot carried 23 headings AND 400 characters of
+  // prose saying much the same thing, at 13.9% of the payload. Pages with real headings get a
+  // shorter tail; pages without one keep the full allowance, because there it is all they have.
+  const headingCount = lines.filter((l) => typeof l === "string" && l.startsWith("#")).length;
+  const text = clean(main.innerText, headingCount >= 4 ? Math.round(maxText * 0.4) : maxText);
   const pw = [...document.querySelectorAll('input[type="password"]')].some(visible);
   const signInWords = /\b(sign ?in|log ?in|login)\b/i;
   const h1 = document.querySelector("h1");
