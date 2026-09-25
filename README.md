@@ -95,6 +95,14 @@ you are genuinely signed in to (`bin/attach.mjs`) or to use the site's API. Dres
 else is a race that gets lost on the next update, and it breaks the terms of most sites worth
 visiting.
 
-## Licence
+## Licence and responsibility
 
 MIT. See [LICENSE](LICENSE).
+
+It depends on Playwright, the Model Context Protocol SDK and Zod, each licensed separately by its
+own authors, and Playwright downloads browser builds from Microsoft under their terms. None of that
+is affected by this licence.
+
+It drives a real browser and acts on real websites on your behalf, so you are responsible for what
+you point it at: the terms of the sites you visit, the accounts you sign into, and the credentials
+you make available to it.
