@@ -2,6 +2,8 @@
 
 A browser an agent can actually drive, as an MCP tool set over Playwright.
 
+[rebelstudiossoftware.com/agent-browser.html](https://rebelstudiossoftware.com/agent-browser.html)
+
 **Measured against what Playwright's own MCP server sends a model, on five live pages: 44.3x smaller
 and 1.7x faster.** One Wikipedia article is 241,988 characters there and 3,877 here. Run
 `npm run bench` and check it yourself — that is what the benchmark is for.
