@@ -71,6 +71,21 @@ export function collect({ limit = 60, find = "", scope = "", maxText = 400 } = {
     }
     return tag;
   };
+  // A mailto/tel link does NOT navigate — clicking one in a headless browser opens nothing, it is a
+  // dead action, and the agent's real move is to read the address off the label instead. The role
+  // "link" is dropped just below as the least surprising fact on the page; that a "link" will not
+  // actually go anywhere is the opposite, and worth its one word. Deliberately NOT flagging external
+  // http(s) hosts here: those DO navigate (click still works), and marking every one of them measured
+  // at +5% on the benchmark whose ratio the README, the landing page and the store listing all quote
+  // — a positioning change, not a bug fix. mailto/tel are near-absent on real pages, so this is free.
+  const dest = (el) => {
+    if (el.tagName !== "A" || !el.getAttribute("href")) return "";
+    let u;
+    try { u = new URL(el.getAttribute("href"), location.href); } catch { return ""; }
+    if (u.protocol === "mailto:") return " → email";
+    if (u.protocol === "tel:") return " → phone";
+    return "";
+  };
   const state = (el) => {
     const out = [];
     const r = role(el);
@@ -150,7 +165,7 @@ export function collect({ limit = 60, find = "", scope = "", maxText = 400 } = {
     // 12.4% of the whole snapshot to repeat the least surprising fact on the page. Everything that
     // is NOT a plain link still names itself, which is the part that carries information.
     const r = role(el);
-    lines.push(`${box ? "  " : ""}[${ref(el)}]${r === "link" ? "" : " " + r} "${name}"${state(el)}`);
+    lines.push(`${box ? "  " : ""}[${ref(el)}]${r === "link" ? "" : " " + r} "${name}"${state(el)}${dest(el)}`);
     shown++;
     if (region && regionSeen.get(region) === PER_REGION) lines.push({ region }); // "… N more" goes here
   }

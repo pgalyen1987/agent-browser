@@ -3,6 +3,18 @@
 Every entry says what was wrong, because that is the useful half. Numbers are from
 `npm run bench` on the day, against the snapshot Playwright's MCP server sends.
 
+## 0.7.1
+
+- **A `mailto:` or `tel:` link read as an ordinary link, so an agent would click it and get nothing.**
+  Those schemes do not navigate — in a headless browser the click opens no mail client and no dialer,
+  it is a dead action, and the real move is to read the address off the label. The snapshot now marks
+  them, `[e6] "Email the studio" → email` and `… → phone`, so the agent knows not to click into a void.
+  External `http(s)` links are left unmarked on purpose: they *do* navigate, so a click still works, and
+  flagging every one of them measured **+5%** on the benchmark (44.1x → 41.9x) whose ratio the README,
+  the landing page and the store listing all quote — that is a positioning change, not a bug fix.
+  Found by dogfooding: a page's `mailto:` contact link looked identical to a real page link. Benchmark
+  re-run after the change: unchanged at **44.1x** (mailto/tel are ~absent on the five pages).
+
 ## 0.7.0
 
 Both of these were found by the directory's own validator during submission, which saw things no

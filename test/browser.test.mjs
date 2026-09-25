@@ -48,6 +48,20 @@ test("a secret goes into the page and never into the output", async () => {
   assert.match(await b.fillSecret("API key", "NOPE_KEY"), /no NOPE_KEY/);
 });
 
+test("a link that will not navigate is flagged; one that will is left lean", async () => {
+  // mailto:/tel: are dead clicks in a headless browser — flagging them tells the agent to read the
+  // address off the label instead of clicking into nothing. External http(s) links DO navigate, so
+  // they stay unmarked on purpose: marking every one measured +5% on the benchmark whose ratio the
+  // README, landing page and store listing all quote. This locks in both halves of that decision.
+  // (Placed after the form.html tests above, which share this browser and expect to stay on it.)
+  const s = await b.open(page("links.html"));
+  assert.match(s, /"Email the studio" → email/);
+  assert.match(s, /"Call us" → phone/);
+  assert.match(s, /\[e\d+\] "Join the tester group"$/m); // external: present, but no destination tail
+  assert.doesNotMatch(s, /Join the tester group" →/);
+  assert.doesNotMatch(s, /About this studio" →/); // relative/same-site: no tail either
+});
+
 test("a click under a cookie bar presses Accept; under a chat widget with no close button, hides it", async () => {
   await b.open(page("overlay.html"));
   const out = await b.click('button "Continue to payment"', { snap: false });
