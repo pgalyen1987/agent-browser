@@ -43,7 +43,7 @@ jobs:
           AB_BROWSER: ${{ matrix.browser }}
 
   # WebKit is separate because on a runner it needs its own system libraries, and because the
-  # interesting question there is whether bin/webkit-deps.mjs still works — that script exists for
+  # interesting question there is whether cli/webkit-deps.mjs still works — that script exists for
   # distros where Playwright's own installer fails, and it can rot silently.
   webkit:
     runs-on: ubuntu-latest
@@ -57,7 +57,7 @@ jobs:
       # so it should find nothing to do — which is itself the check: if it starts downloading here,
       # its probe has drifted.
       - name: the no-sudo dependency fix still reports honestly
-        run: node bin/webkit-deps.mjs || true
+        run: node cli/webkit-deps.mjs || true
       - run: npm test
         env:
           AB_BROWSER: webkit

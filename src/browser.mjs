@@ -498,6 +498,13 @@ export async function open(url) {
   const p = await session();
   const res = await p.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 }).catch((e) => ({ error: e.message }));
   await settle(p);
+  // Describe the tab we actually navigated. open() is an explicit navigation, so if a popup opens
+  // while the page loads (or a stray one from an earlier action arrives late), its "page" event
+  // must not swing the current tab out from under us and make snapshot() report the popup instead.
+  // That is the WebKit-CI flake of 2026-09-25: a receipt tab opened by the previous test landed
+  // mid-open and open() snapshotted it rather than the page it had just loaded. Switching to a
+  // popup is the tabs tool's job, never a silent side effect of open().
+  page = p;
   const status = res?.error ? `could not load: ${res.error.split("\n")[0]}` : res && res.status() >= 400 ? `HTTP ${res.status()}` : "";
   return (status ? status + "\n" : "") + (await snapshot());
 }

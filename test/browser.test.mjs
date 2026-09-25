@@ -236,6 +236,19 @@ test("tabs can be listed and switched, so a new tab is not a dead end", async ()
   assert.match(await b.tabs({ to: "no-such-tab-anywhere" }), /no tab matches/);
 });
 
+test("open() describes the page it navigated, not a popup that page spawns", async () => {
+  // Regression for the WebKit-CI flake of 2026-09-25. A receipt tab opened by the previous test
+  // arrived late; its "page" event swung the current tab mid-open, so open() snapshotted the popup
+  // (a framed.html checkout) instead of the CAPTCHA page it had just loaded. Deterministic here:
+  // the fixture opens a popup as it loads, so the event always lands during open()'s settle.
+  const s = await b.open(page("popup-on-load.html"));
+  assert.match(s, /Opener page loaded/);   // the page open() was told to load
+  assert.doesNotMatch(s, /Card details/);  // not the popup it spawned
+  // The popup is not lost — switching to it is the tabs tool's job, not a silent hijack of open().
+  assert.match(await b.tabs({ to: "framed.html" }), /switched to it/);
+  await b.tabs({ shut: "framed.html" });   // leave a single tab for the next test
+});
+
 test("a politely worded CAPTCHA is still named as a wall", async () => {
   // Hit for real on DuckDuckGo: none of the "just a moment" phrasings appear, so it read as an
   // ordinary page with one button and the empty result looked like "no matches".

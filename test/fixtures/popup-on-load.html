@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Opener</title>
+<!-- Regression fixture for the WebKit-CI flake of 2026-09-25. This page opens a second tab while it
+     is loading, so the context's "page" event lands during open()'s settle. open() must describe
+     THIS page, not the popup it spawned: the popup used to swing the current tab so snapshot()
+     reported the popup instead of the page open() had just navigated to. -->
+<h1>Opener page loaded</h1>
+<button>Opener button</button>
+<script>window.open("framed.html", "_blank");</script>
