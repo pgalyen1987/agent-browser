@@ -31,6 +31,12 @@ jobs:
       - run: npm ci
       - name: install the browser under test
         run: npx playwright install --with-deps ${{ matrix.browser }}
+      # CDP is a Chromium protocol: test/cdp.test.mjs launches a Chromium whatever AB_BROWSER says,
+      # so the firefox job needs one too. Without it those four tests fail on a missing binary and
+      # look like a bug in the feature.
+      - name: chromium as well, for the CDP tests
+        if: matrix.browser != 'chromium'
+        run: npx playwright install --with-deps chromium
       - name: test
         run: npm test
         env:
@@ -47,8 +53,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      - run: npx playwright install webkit
-      - name: the no-sudo dependency fix still works
+      - run: npx playwright install --with-deps webkit
+      # The script is for distros where Playwright's own installer fails. A GitHub runner is Ubuntu,
+      # so it should find nothing to do — which is itself the check: if it starts downloading here,
+      # its probe has drifted.
+      - name: the no-sudo dependency fix still reports honestly
         run: node bin/webkit-deps.mjs || true
       - run: npm test
         env:

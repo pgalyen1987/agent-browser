@@ -18,10 +18,19 @@ const PORT = 9411; // not 9224: a test must never collide with the owner's own a
 const fixture = pathToFileURL(join(import.meta.dirname, "fixtures", "form.html")).href;
 
 let theirBrowser, theirPage, ab;
+let skip = false;
 
 before(async () => {
-  // Stands in for a browser the person started themselves.
-  theirBrowser = await chromium.launch({ args: [`--remote-debugging-port=${PORT}`] });
+  // CDP is a CHROMIUM protocol — this file tests attaching, not the engine under test, so it needs
+  // a Chromium however AB_BROWSER is set. Where there is not one, skip loudly rather than fail:
+  // four red tests about a missing binary look exactly like a broken feature.
+  try {
+    theirBrowser = await chromium.launch({ args: [`--remote-debugging-port=${PORT}`] });
+  } catch (e) {
+    console.log(`# SKIP cdp tests: no Chromium available (${String(e.message).split("\n")[0].slice(0, 80)})`);
+    skip = true;
+    return;
+  }
   theirPage = await theirBrowser.newPage();
   await theirPage.goto(fixture);   // a tab of "theirs", open before we arrive
   process.env.AB_CDP = String(PORT);
@@ -34,14 +43,16 @@ after(async () => {
   await theirBrowser?.close().catch(() => {});
 });
 
-test("attaches to a running browser and can drive it", async () => {
+test("attaches to a running browser and can drive it", async (t) => {
+  if (skip) return t.skip("no Chromium available");
   const snap = await ab.open(fixture);
   assert.match(snap, /form "Login":/);
   assert.match(snap, /\[e\d+\]/);
   assert.match(await ab.fill("Email", "pat@example.com"), /filled/i);
 });
 
-test("opens its OWN page and never navigates the one that was already there", async () => {
+test("opens its OWN page and never navigates the one that was already there", async (t) => {
+  if (skip) return t.skip("no Chromium available");
   // Navigating someone's tab out from under them loses whatever they were doing, which is the one
   // thing that would make this feature unusable.
   //
@@ -60,7 +71,8 @@ test("opens its OWN page and never navigates the one that was already there", as
   assert.match(theirPage.url(), /form\.html$/);
 });
 
-test("close DETACHES, leaving their browser and their tab alive", async () => {
+test("close DETACHES, leaving their browser and their tab alive", async (t) => {
+  if (skip) return t.skip("no Chromium available");
   await ab.close();
   assert.equal(theirBrowser.isConnected(), true, "closing detached us but killed their browser");
   const left = theirBrowser.contexts()[0].pages();
@@ -68,7 +80,8 @@ test("close DETACHES, leaving their browser and their tab alive", async () => {
   assert.match(left[0].url(), /form\.html$/);
 });
 
-test("a dead endpoint fails in words a caller can act on", async () => {
+test("a dead endpoint fails in words a caller can act on", async (t) => {
+  if (skip) return t.skip("no Chromium available");
   // The common way to get this wrong is to forget the flag on the browser, so the failure has to
   // name the endpoint rather than arrive as a bare stack trace.
   //
