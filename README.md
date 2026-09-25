@@ -114,6 +114,12 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
   navigates theirs, and `close` detaches rather than shutting their browser. `bin/attach.mjs` does
   the same for one-off scripts outside the MCP.
 - `AB_DOWNLOADS` moves where downloads land (default `~/.cache/agent-browser/downloads`).
+- **WebKit on a distro that is not Ubuntu 24.04:** `npx playwright install-deps webkit` fails on
+  Kali and Debian testing, because it apt-gets Ubuntu package names that do not exist there
+  (`libicu74`, `libjpeg-turbo8`). `node bin/webkit-deps.mjs` fetches just the shared objects WebKit
+  actually links and puts them in the bundle's own lib directory — no sudo, nothing outside
+  `~/.cache`, and your system ICU untouched. Symlinking a newer ICU does not work: its symbols carry
+  the major version, so the library loads and every symbol is missing.
 - `AB_CHANNEL=chrome` uses the installed Google Chrome instead of the Chromium build Playwright
   ships — closer to what a visitor really runs. It does not get you past strict bot protection;
   measured, it makes no difference there.
@@ -125,10 +131,8 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
 - WebKit is not tested. Chromium and Firefox are; `AB_BROWSER=firefox` switches engine, and the
   whole browser suite passes on both.
 - Frames are collected up to eight deep in document order; an ad-heavy page with dozens is capped.
-- WebKit is not tested here because this machine is missing its system libraries (`libicu74` and
-  friends). The engine is wired up — `AB_BROWSER=webkit` — but until someone runs it on a box where
-  `npx playwright install-deps webkit` has been applied, it stays listed as untested rather than
-  claimed. Chromium and Firefox both pass the whole suite.
+- All three engines pass the whole browser suite: Chromium, Firefox and WebKit. `AB_BROWSER` picks
+  one, and each keeps its own profile directory.
 - `snapshot` describes interactive elements and headings. It is not a reader for prose-heavy pages —
   use `js` for that.
 - `network` starts recording when the server starts driving, so it has nothing from before that.
