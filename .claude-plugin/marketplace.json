@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "rebel-studios",
-  "description": "Tools from Rebel Studios for agents that have to work real software",
+  "description": "Tools from Rebel Studios for agents that have to work real software, not demos of it.",
   "owner": {
     "name": "Rebel Studios",
     "email": "contact@rebelstudiossoftware.com"
@@ -10,15 +10,25 @@
     {
       "name": "agent-browser",
       "displayName": "Agent Browser",
-      "description": "A browser an agent can actually drive. Compact page snapshots instead of whole-page accessibility dumps, clicks that survive cookie bars, credentials that never enter the transcript, and the console and network log when a page misbehaves.",
+      "description": "Drives a real browser for an agent and hands back 37x less page. Compact snapshots instead of whole-page accessibility dumps \u2014 measured against what Playwright's MCP server sends, and reproducible with the bundled benchmark. Clicks survive cookie bars, credentials never reach the transcript, the console and network log say what a page actually did, and a bot wall is named instead of arriving as a page with nothing on it.",
       "version": "0.2.0",
       "author": {
         "name": "Rebel Studios",
         "email": "contact@rebelstudiossoftware.com"
       },
       "category": "productivity",
-      "homepage": "https://rebelstudiossoftware.com",
-      "source": "./"
+      "homepage": "https://github.com/pgalyen1987/agent-browser",
+      "source": "./",
+      "license": "MIT",
+      "keywords": [
+        "browser",
+        "playwright",
+        "mcp",
+        "automation",
+        "web"
+      ],
+      "icon": "./art/icon-512.png",
+      "banner": "./art/banner.png"
     }
   ]
 }

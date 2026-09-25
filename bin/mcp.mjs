@@ -18,13 +18,19 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const say = (s) => process.stderr.write(`agent-browser: ${s}\n`);
 
-// Checked by presence of the two packages that must resolve, not of node_modules itself: a partial
-// or interrupted install leaves the directory there and the packages missing.
-const needed = ["@modelcontextprotocol/sdk", "playwright"];
-const missing = needed.filter((p) => !existsSync(join(root, "node_modules", p)));
+// RESOLVED, NOT LOOKED FOR ON DISK. An earlier version checked for <root>/node_modules/<pkg>, which
+// is wrong for the normal case: npm HOISTS dependencies to the top-level node_modules of the
+// installing project, so a perfectly good `npm install @rebelstudios/agent-browser` left that path
+// empty and the launcher re-installed 96 packages it already had, on every first run. Ask the
+// resolver the question the runtime will actually ask.
+const needed = ["@modelcontextprotocol/sdk/server/mcp.js", "playwright"];
+const missing = [];
+for (const spec of needed) {
+  try { await import.meta.resolve(spec); } catch { missing.push(spec.split("/")[0].replace(/^(@[^/]+)$/, "$1")); }
+}
 
 if (missing.length) {
-  say(`first run: installing ${missing.join(", ")}`);
+  say(`first run: installing ${[...new Set(missing)].join(", ")}`);
   const npm = spawnSync("npm", ["install", "--omit=dev", "--no-audit", "--no-fund"], {
     cwd: root,
     // CHILD STDOUT GOES TO FD 2, NOT "inherit". "inherit" hands the child our stdout, which is the
