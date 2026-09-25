@@ -54,6 +54,10 @@ Each row is a thing that cost us time first, then got a tool.
 | Auth expiry shows up as a redirect | Snapshots start with `auth: this looks like a login page` when the page is one. |
 | A bot wall snapshots like an empty site | A challenge or block page is named — `blocked: this is an interstitial bot check (Cloudflare)` — instead of coming back as a page with nothing on it. It reports the wall; it does not get around one. |
 | Wizards need "Next" found by hand every step | `next` presses the page's forward button, preferring one inside a form or dialog. |
+| An iframe snapshots as nothing at all | Child frames are collected too and their refs prefixed — `[f1e3] button "Pay now"`. A card form, a consent dialog and an embedded editor are all iframes, so "the page looks empty" was a silent and common failure. A frame on another origin is named as unreadable rather than dropped. |
+| A link opens a tab and there is no way back | `tabs` lists them (marking the one being driven), switches by index or URL substring, and closes one. |
+| A download goes nowhere | The browser discards downloads unless something asks for them, so "Export CSV" appeared to do nothing. They save to disk and `downloads` lists them with their paths. |
+| You are signed in, but the tool is not | `AB_CDP=9224` drives a browser that is already running and already signed in, so every tool works against that session. Closing detaches instead of shutting their browser. |
 
 Also: `fill`, `upload` (file inputs, or an Upload button that opens a chooser), `press`, `back`,
 `js` (the escape hatch), `close`. Dialogs never block a page silently: alerts are acknowledged, a
@@ -100,8 +104,12 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
   `AB_EPHEMERAL=1` uses a throwaway context; `AB_HEADED=1` shows the window.
 - `AB_PROFILE` and `AB_CREDS` move the profile and the credentials file.
 - Replies name elements by their label, never by a field's value — a value can be a secret.
-- `bin/attach.mjs` connects over CDP to a browser you are already signed into, for the case where
-  logging in is not something to automate. It opens its own page and never navigates your tabs.
+- `AB_CDP=9224` (a port or a full URL) attaches to a browser already running with
+  `--remote-debugging-port=9224`, for the case where logging in is not something to automate: 2FA
+  makes it impossible and doing it on someone's behalf is not the job. It opens its own page, never
+  navigates theirs, and `close` detaches rather than shutting their browser. `bin/attach.mjs` does
+  the same for one-off scripts outside the MCP.
+- `AB_DOWNLOADS` moves where downloads land (default `~/.cache/agent-browser/downloads`).
 - `npm test` runs the fixtures in `test/`: compactness, stable refs, forms, secrets, overlays, the
   three wait states, ambiguous targets, ARIA dropdowns, console, network, and the MCP protocol.
 
@@ -109,7 +117,7 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
 
 - WebKit is not tested. Chromium and Firefox are; `AB_BROWSER=firefox` switches engine, and the
   whole browser suite passes on both.
-- One page at a time. A link that opens a tab is followed; there is no tab switcher.
+- Frames are collected up to eight deep in document order; an ad-heavy page with dozens is capped.
 - `snapshot` describes interactive elements and headings. It is not a reader for prose-heavy pages —
   use `js` for that.
 - `network` starts recording when the server starts driving, so it has nothing from before that.

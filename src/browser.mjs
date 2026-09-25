@@ -3,7 +3,7 @@
 // description: 'button "Next"', 'link Pricing', or plain text.
 import { chromium, firefox, webkit } from "playwright";
 import { readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { writeFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { collect, render } from "./snapshot.mjs";
@@ -16,6 +16,21 @@ const ENGINES = { chromium, firefox, webkit };
 const ENGINE_NAME = (process.env.AB_BROWSER || "chromium").toLowerCase();
 const ENGINE = ENGINES[ENGINE_NAME] || chromium;
 const CREDS = process.env.AB_CREDS || join(homedir(), ".config/rebel-studios/creds.env");
+// Downloads have to be accepted and given somewhere to go, or Playwright throws them away and a
+// click on "Export" looks like it did nothing.
+const DOWNLOAD_DIR = process.env.AB_DOWNLOADS || join(homedir(), ".cache/agent-browser/downloads");
+// AB_CDP drives a browser that is ALREADY RUNNING AND ALREADY SIGNED IN, instead of launching a
+// fresh one. This is the difference between being able to work someone's Play Console, Google
+// Groups or Kaggle and not: those need a real session, and automating the login is neither
+// possible (2FA) nor something to do on someone's behalf.
+//
+// Set it to a port or a full URL. The browser has to have been started with the matching flag:
+//   google-chrome --remote-debugging-port=9224
+// bin/attach.mjs did this for one-off scripts; this makes every tool work the same way.
+const CDP = process.env.AB_CDP ? (/^\d+$/.test(process.env.AB_CDP)
+  ? `http://127.0.0.1:${process.env.AB_CDP}` : process.env.AB_CDP) : null;
+let attached = false; // when true, close() detaches and leaves the owner's browser running
+const downloaded = [];
 
 let ctx = null;
 let browser = null; // only in ephemeral mode, where the context doesn't own the browser
@@ -52,8 +67,22 @@ export async function session({ fresh = false } = {}) {
       page = null;
     }
   }
-  if (ctx) await ctx.close().catch(() => {});
-  const opts = { headless: process.env.AB_HEADED !== "1", viewport: { width: 1280, height: 900 } };
+  if (ctx && !attached) await ctx.close().catch(() => {});
+  const opts = { headless: process.env.AB_HEADED !== "1", viewport: { width: 1280, height: 900 }, acceptDownloads: true };
+
+  if (CDP) {
+    // Its own page, never one of theirs: navigating a tab out from under someone loses whatever
+    // they were doing in it.
+    browser = await chromium.connectOverCDP(CDP);
+    ctx = browser.contexts()[0];
+    if (!ctx) throw new Error(`nothing to attach to at ${CDP} — is the browser running with --remote-debugging-port?`);
+    attached = true;
+    page = await ctx.newPage();
+    watch(page);
+    ctx.on("page", (q) => { page = q; watch(q); });
+    return page;
+  }
+
   if (process.env.AB_EPHEMERAL === "1") {
     browser = await ENGINE.launch({ headless: opts.headless });
     ctx = await browser.newContext({ viewport: opts.viewport });
@@ -83,6 +112,18 @@ function push(log, kind, entry) {
 }
 
 function watch(p) {
+  p.on("download", async (d) => {
+    try {
+      await mkdir(DOWNLOAD_DIR, { recursive: true });
+      const name = d.suggestedFilename() || `download-${Date.now()}`;
+      const to = join(DOWNLOAD_DIR, name);
+      await d.saveAs(to);
+      const { size } = await import("node:fs").then((fs) => fs.promises.stat(to)).catch(() => ({ size: null }));
+      downloaded.push({ name, path: to, bytes: size });
+    } catch (e) {
+      downloaded.push({ name: "(failed)", path: String(e.message || e).slice(0, 120), bytes: null });
+    }
+  });
   p.on("dialog", async (d) => {
     const type = d.type();
     const accept = type === "alert" || type === "beforeunload" || (type === "confirm" && acceptNextConfirm);
@@ -143,7 +184,72 @@ function watch(p) {
   }).catch(() => {});
 }
 
+/**
+ * The open tabs, and switching between them.
+ *
+ * A link that opens a tab was already followed, but there was no way back and no way to see what
+ * else was open — so a flow that opens a receipt in a new tab left the original page unreachable.
+ * `to` switches by index or by a substring of the title or URL; `shut` closes one.
+ */
+export async function tabs({ to, shut } = {}) {
+  const p = await session();
+  const all = ctx.pages().filter((q) => !q.isClosed());
+  const describe = async (q, i) =>
+    `${i + 1}${q === page ? " *" : "  "} ${(await q.title().catch(() => "")) || "(untitled)"} — ${q.url()}`;
+
+  const pick = (spec) => {
+    if (typeof spec === "number" || /^\d+$/.test(String(spec))) return all[Number(spec) - 1];
+    const q = String(spec).toLowerCase();
+    return all.find((x) => x.url().toLowerCase().includes(q));
+  };
+
+  if (shut !== undefined) {
+    const target = pick(shut);
+    if (!target) return `no tab matches ${JSON.stringify(shut)}\n` + (await Promise.all(all.map(describe))).join("\n");
+    if (all.length === 1) return "that is the only tab; use close to end the session instead";
+    const wasCurrent = target === page;
+    await target.close().catch(() => {});
+    const left = ctx.pages().filter((q) => !q.isClosed());
+    if (wasCurrent) { page = left[left.length - 1]; watch(page); lastSnap = null; }
+    return `closed it; ${left.length} tab${left.length === 1 ? "" : "s"} left\n` +
+      (await Promise.all(left.map(describe))).join("\n");
+  }
+
+  if (to !== undefined) {
+    const target = pick(to);
+    if (!target) return `no tab matches ${JSON.stringify(to)}\n` + (await Promise.all(all.map(describe))).join("\n");
+    page = target;
+    watch(page);
+    lastSnap = null; // a different page is a different baseline; the next reply is a full snapshot
+    await page.bringToFront().catch(() => {});
+    return `switched to it\n\n` + (await snapshot());
+  }
+
+  // The current tab is marked, because "which one am I driving" is the question this usually answers.
+  return (await Promise.all(all.map(describe))).join("\n") + `\n(* is the one being driven)`;
+}
+
+/**
+ * Files the page downloaded since the session started, saved to disk.
+ *
+ * A download used to go nowhere: Playwright discards it unless something asks for it, so clicking
+ * "Export CSV" appeared to do nothing at all. They now land in a directory and this lists them.
+ */
+export async function downloads() {
+  await session();
+  if (!downloaded.length) return `no downloads yet (they save to ${DOWNLOAD_DIR})`;
+  return downloaded.map((d) => `${d.name} — ${d.path}${d.bytes != null ? ` (${d.bytes} bytes)` : ""}`).join("\n");
+}
+
 export async function close() {
+  // ATTACHED MEANS BORROWED. Closing the context would shut the owner's browser and every tab in
+  // it, so only the page we opened goes, and the connection is dropped.
+  if (attached) {
+    if (page && !page.isClosed()) await page.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {}); // disconnects; does not kill the browser
+    ctx = null; browser = null; page = null; attached = false;
+    return;
+  }
   if (ctx) await ctx.close().catch(() => {});
   if (browser) await browser.close().catch(() => {});
   ctx = null;
@@ -151,9 +257,52 @@ export async function close() {
   page = null;
 }
 
+/**
+ * The page, INCLUDING WHAT IS INSIDE ITS IFRAMES.
+ *
+ * `collect` runs inside one document, so it could only ever see the main frame — and an iframe is
+ * where the interesting controls often live: a payment form, an embedded editor, a consent dialog,
+ * a sign-in widget. Those came back as nothing at all, which is the worst kind of failure because
+ * the page looked empty rather than looked wrong, and the caller went hunting for a selector that
+ * was never going to exist in the document being searched.
+ *
+ * Each child frame is collected separately and its refs are prefixed — `f2e7` is element 7 in frame
+ * 2 — so a ref still addresses exactly one element and `locate` knows which document to look in.
+ * Frames that are blank, tiny or cross-origin-unreadable are skipped rather than reported as empty.
+ */
+async function collectFrames(p, opts) {
+  const frames = p.frames().filter((f) => f !== p.mainFrame());
+  const out = [];
+  let n = 0;
+  for (const f of frames) {
+    n++;
+    if (n > 8) break; // an ad-heavy page can carry dozens; past a handful this stops being useful
+    try {
+      const url = f.url();
+      if (!url || url === "about:blank") continue;
+      const got = await f.evaluate(collect, { ...opts, limit: Math.min(opts.limit ?? 60, 25) });
+      if (!got.lines.length) continue;
+      const label = `frame f${n}: ${got.title || new URL(url).host}`;
+      // Prefix the refs so they stay unique across documents.
+      const body = render(got, { ...opts, withText: false })
+        .split("\n").slice(2)
+        .map((l) => l.replace(/\[e(\d+)\]/g, `[f${n}e$1]`))
+        .filter(Boolean);
+      if (body.length) out.push("", label, ...body.map((l) => "  " + l));
+    } catch {
+      // A cross-origin frame we cannot read is named, not silently dropped: knowing it is there and
+      // unreadable is what tells a caller to look for another way in.
+      out.push("", `frame f${n}: (a different origin; its contents cannot be read from here)`);
+    }
+  }
+  return out;
+}
+
 export async function snapshot(opts = {}) {
   const p = await session();
-  const out = render(await p.evaluate(collect, opts), opts);
+  const main = render(await p.evaluate(collect, opts), opts);
+  const frames = await collectFrames(p, opts);
+  const out = frames.length ? main + "\n" + frames.join("\n") : main;
   // Asking for the page in full resets what "changed" is measured against, so an explicit
   // snapshot always tells the whole truth and the next diff is honest about the same baseline.
   if (!opts.find && !opts.scope) lastSnap = out;
@@ -222,6 +371,14 @@ export async function locate(target) {
   const p = await session();
   const t = String(target).trim();
   if (/^e\d+$/.test(t)) return p.locator(`[data-ab="${t}"]`).first();
+  // A prefixed ref (f2e7) addresses an element inside the nth child frame.
+  const inFrame = t.match(/^f(\d+)e(\d+)$/);
+  if (inFrame) {
+    const frames = p.frames().filter((f) => f !== p.mainFrame());
+    const f = frames[Number(inFrame[1]) - 1];
+    if (!f) return null;
+    return f.locator(`[data-ab="e${inFrame[2]}"]`).first();
+  }
   const m = t.match(/^(button|link|textbox|checkbox|radio|tab|menuitem|combobox|heading|option)\s+["“]?(.+?)["”]?$/i);
   const candidates = m
     ? [p.getByRole(m[1].toLowerCase(), { name: m[2] }), p.getByRole(m[1].toLowerCase(), { name: m[2], exact: false })]

@@ -104,6 +104,16 @@ server.registerTool("network", {
   inputSchema: { failed: z.boolean().optional(), thirdParty: z.boolean().optional(), match: z.string().optional(), limit: z.number().int().optional() },
 }, safe((o) => b.network(o)));
 
+server.registerTool("tabs", {
+  description: "List the open tabs, or switch to one with `to` (an index, or a substring of its URL), or close one with `shut`. A link that opens a tab is followed; this is how you get back.",
+  inputSchema: { to: z.string().optional(), shut: z.string().optional() },
+}, safe((o) => b.tabs(o || {})));
+
+server.registerTool("downloads", {
+  description: "Files the page has downloaded this session, saved to disk with their paths. A download is discarded by the browser unless something asks for it, so without this a click on Export appears to do nothing.",
+  inputSchema: {},
+}, safe(() => b.downloads()));
+
 server.registerTool("js", {
   description: "Evaluate a JavaScript expression in the page and return the result (trimmed). The escape hatch.",
   inputSchema: { code: z.string() },

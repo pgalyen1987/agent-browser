@@ -177,3 +177,46 @@ test("asking for a snapshot resets what 'changed' is measured against", async ()
   const again = await b.snapshot();
   assert.match(again, /\[e\d+\]/); // a snapshot is always the whole truth, never a diff
 });
+
+test("controls inside an iframe are in the snapshot, with refs that work", async () => {
+  // This used to come back as a page with one button on it. A card form, a consent dialog and an
+  // embedded editor are all iframes, so "the page looks empty" was a silent, common failure.
+  const s = await b.open(page("framed.html"));
+  assert.match(s, /\[e\d+\] button "Review order"/);   // the outer page
+  assert.match(s, /frame f1: Card details/);            // the frame is named
+  assert.match(s, /\[f1e\d+\] textbox "Card number"/);  // and its contents are there
+  assert.match(s, /\[f1e\d+\] button "Pay now"/);
+
+  // A prefixed ref must address the element inside that frame, not fail or hit the wrong document.
+  const ref = s.match(/\[(f1e\d+)\] textbox "Card number"/)[1];
+  const out = await b.fill(ref, "4242424242424242");
+  assert.match(out, /filled/i);
+  // Verified through a fresh snapshot rather than contentDocument: a file:// iframe is cross-origin
+  // to its file:// parent, so reaching into it from the outer document returns null — which is the
+  // whole reason frames need their own collection pass.
+  const after = await b.snapshot();
+  assert.match(after, /\[f1e\d+\] textbox "Card number" \(required\) = "4242424242424242"/);
+});
+
+test("a download is saved and listed, instead of vanishing", async () => {
+  // Playwright discards a download unless something asks for it, so "Export CSV" used to appear
+  // to do nothing at all.
+  await b.open(page("downloads.html"));
+  await b.click("Export CSV");
+  await b.wait("Export", { timeout: 2000 }).catch(() => {});
+  const list = await b.downloads();
+  assert.match(list, /report\.csv/);
+  assert.doesNotMatch(list, /no downloads yet/);
+});
+
+test("tabs can be listed and switched, so a new tab is not a dead end", async () => {
+  await b.open(page("downloads.html"));
+  await b.click("Open the receipt");
+  const list = await b.tabs();
+  assert.match(list, /downloads\.html/);
+  assert.match(list, /framed\.html/);
+  assert.match(list, /\* /); // the one being driven is marked
+  const back = await b.tabs({ to: "downloads.html" });
+  assert.match(back, /switched to it/);
+  assert.match(back, /Export CSV/); // and we are really on that page again
+});
