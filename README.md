@@ -1,5 +1,7 @@
 # agent-browser
 
+[![test](https://github.com/pgalyen1987/agent-browser/actions/workflows/test.yml/badge.svg)](https://github.com/pgalyen1987/agent-browser/actions/workflows/test.yml)
+
 A browser an agent can actually drive, as an MCP tool set over Playwright.
 
 [rebelstudiossoftware.com/agent-browser.html](https://rebelstudiossoftware.com/agent-browser.html)
