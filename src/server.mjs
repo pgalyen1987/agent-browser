@@ -10,7 +10,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import * as b from "./browser.mjs";
 
-const server = new McpServer({ name: "agent-browser", version: "0.1.0" });
+const server = new McpServer({ name: "agent-browser", version: "0.2.0" });
 const text = (s) => ({ content: [{ type: "text", text: String(s) }] });
 const safe = (fn) => async (args) => {
   try { return text(await fn(args || {})); } catch (e) { return { ...text(`error: ${String(e.message || e).split("\n")[0]}`), isError: true }; }
@@ -77,10 +77,29 @@ server.registerTool("next", {
 
 server.registerTool("back", { description: "Go back one page.", inputSchema: {} }, safe(() => b.back()));
 
+// The image comes back INLINE, so looking at a page is one call rather than screenshot-then-read.
+// `path` is optional now: most looks want to see, not to keep a file.
 server.registerTool("screenshot", {
-  description: "Save a PNG of the page to a path (full: the whole scroll height).",
-  inputSchema: { path: z.string(), full: z.boolean().optional() },
-}, safe(({ path, full }) => b.screenshot(path, { full })));
+  description: "See the page: returns the image itself. full: the whole scroll height. path: also save it to a file (optional).",
+  inputSchema: { path: z.string().optional(), full: z.boolean().optional() },
+}, async ({ path, full } = {}) => {
+  try {
+    const r = await b.screenshot(path, { full });
+    return { content: [{ type: "image", data: r.image, mimeType: r.mime }, { type: "text", text: r.note }] };
+  } catch (e) {
+    return { ...text(`error: ${String(e.message || e).split("\n")[0]}`), isError: true };
+  }
+});
+
+server.registerTool("console", {
+  description: "The browser console for the current page: errors, warnings, uncaught exceptions. level: \"error\" for errors only, or a substring to match.",
+  inputSchema: { level: z.string().optional(), limit: z.number().int().optional() },
+}, safe((o) => b.consoleMessages(o)));
+
+server.registerTool("network", {
+  description: "The network log for the current page. failed: only failures and 4xx/5xx. thirdParty: only requests leaving the page's own domain (how you catch a tracker the page does not mention). match: a substring of the URL.",
+  inputSchema: { failed: z.boolean().optional(), thirdParty: z.boolean().optional(), match: z.string().optional(), limit: z.number().int().optional() },
+}, safe((o) => b.network(o)));
 
 server.registerTool("js", {
   description: "Evaluate a JavaScript expression in the page and return the result (trimmed). The escape hatch.",

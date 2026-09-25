@@ -1,29 +1,81 @@
 # agent-browser
 
-A browser layer for AI agents, over Playwright, served as an MCP tool set. Internal tooling: it
-exists to cut the tokens and round-trips our own sessions spend driving web pages. Playwright was
-built to test pages you wrote; an agent is working pages it has never seen.
+A browser an agent can actually drive, as an MCP tool set over Playwright.
 
-    claude mcp add agent-browser -- node ~/agent-browser/src/server.mjs
+Playwright was built to test pages you wrote, where you already know the selectors. An agent is
+working pages it has never seen, and the friction is different: the page description is too big to
+read, the element reference goes stale, a cookie bar eats the click, and "not found" is
+indistinguishable from "not loaded yet".
 
-## What it fixes (measured friction, in the order it cost us)
+## Install
 
-| Friction | What the tools do instead |
+As a Claude Code plugin:
+
+```
+/plugin marketplace add rebel-studios/agent-browser
+/plugin install agent-browser
+```
+
+Or as a plain MCP server:
+
+```
+git clone <this repo> ~/agent-browser && cd ~/agent-browser && npm install
+claude mcp add agent-browser -- node ~/agent-browser/bin/mcp.mjs
+```
+
+The first run fetches the Chromium build Playwright drives, once, and says so on stderr.
+
+## What it fixes
+
+Each row is a thing that cost us time first, then got a tool.
+
+| Friction | What it does instead |
 | --- | --- |
-| Whole-page accessibility dumps flood the context | `snapshot`/`open` return a compact outline: headings, forms and dialogs as groups, each interactive element as `[e12] button "Next" (disabled)`, navigation and footers collapsed to six links and a count, then 400 characters of page text. 3x to 18x smaller than Playwright's aria snapshot on real pages (18x on the Daybreak leaderboard). |
-| Element refs go stale after a re-render | Refs are stored on the element (`data-ab`), so a button keeps `e12` across snapshots while it exists. Targets can also be `'button "Next"'` or a label. |
-| Cookie bars and chat bubbles intercept clicks | `click` scrolls to the target, checks what is actually on top of it, presses the overlay's Accept/Close/Got it button or hides the layer, and says which. |
-| "Not found" and "not loaded yet" look the same | `wait` answers one of three things: there; still loading (requests in flight or the DOM changed in the last 800 ms); absent on a page that has gone idle. |
-| Secrets pass through the transcript | `fill_secret` takes a key name from `~/.config/rebel-studios/creds.env`; the value goes to the page only, and later snapshots show the field as `(secret)`. |
+| Whole-page accessibility dumps flood the context | `snapshot`/`open` return a compact outline: headings, forms and dialogs as groups, each interactive element as `[e12] button "Next" (disabled)`, navigation and footers collapsed to six links and a count, then 400 characters of page text. Measured 3x to 18x smaller than Playwright's aria snapshot on real pages. |
+| Element refs go stale after a re-render | Refs live on the element (`data-ab`), so a button keeps `e12` across snapshots for as long as it exists. Targets can also be `'button "Next"'` or a field label. |
+| Cookie bars and chat bubbles intercept clicks | `click` scrolls to the target, checks what is actually on top of it, presses the overlay's Accept/Close button or hides the layer, and says which. |
+| Two things on the page share a name | `click` acts on the first and **says** it had a choice, with where the others are. Silence here is how a click meant for a wizard's submit button reopens a sidebar instead. |
+| "Not found" and "not loaded yet" look the same | `wait` answers one of three things: there; still loading (requests in flight or the DOM changed in the last 800ms); absent on a page that has gone idle. |
+| Secrets pass through the transcript | `fill_secret` takes a key NAME from a credentials file; the value reaches the page only, and later snapshots show the field as `(secret)`. |
+| Dropdowns are not `<select>` any more | `select` drives a real `<select>` and an ARIA listbox/combobox, and confirms from `aria-selected` rather than from the click having landed. |
+| Filling a form costs a round-trip per field | `fill` takes a `fields` array and does the whole form in one call. |
+| A screenshot you cannot see | `screenshot` returns the image itself, so looking at a page is one call rather than save-then-read. |
+| You cannot tell what a page really did | `console` gives its errors, warnings and uncaught exceptions. `network` gives its requests, with `failed`, `thirdParty` and `match` filters. Both scoped to the current page. |
 | Auth expiry shows up as a redirect | Snapshots start with `auth: this looks like a login page` when the page is one. |
-| Wizards need "Next" found by hand every step | `next` presses the page's forward button (Next, Continue, Submit, Done...), preferring one in a form or dialog. |
+| Wizards need "Next" found by hand every step | `next` presses the page's forward button, preferring one inside a form or dialog. |
 
-Other tools: `fill`, `select`, `upload` (file inputs, or an Upload button that opens a chooser), `press`, `back`, `screenshot`, `js` (the escape hatch), `close`. Dialogs never block a page silently: alerts are acknowledged; a confirm ("are you sure?") is dismissed unless the click passed `confirm: true`; the reply quotes what either said.
+Also: `fill`, `upload` (file inputs, or an Upload button that opens a chooser), `press`, `back`,
+`js` (the escape hatch), `close`. Dialogs never block a page silently: alerts are acknowledged, a
+confirm is dismissed unless the click passed `confirm: true`, and the reply quotes what either said.
+
+## Why `network` earns its place
+
+A tracking script injected after hydration leaves **nothing** in the served HTML. We shipped a
+privacy policy saying "no third-party tracking pixels" onto a site that was firing one on every
+page load, and `curl` plus a source grep agreed with the policy both times. The network log is what
+settled it, and it is what settled that the fix had worked.
+
+Source tells you what a page might do. The network log tells you what it did.
 
 ## Notes
 
 - One persistent profile at `~/.cache/agent-browser/profile`, so a login made once survives.
   `AB_EPHEMERAL=1` uses a throwaway context; `AB_HEADED=1` shows the window.
-- Replies name elements by their label, never by a field's value (a value can be a secret).
-- `npm test` runs the fixtures in `test/` (compactness, stable refs, forms, secrets, overlays,
-  the three wait states, the MCP protocol).
+- `AB_PROFILE` and `AB_CREDS` move the profile and the credentials file.
+- Replies name elements by their label, never by a field's value — a value can be a secret.
+- `bin/attach.mjs` connects over CDP to a browser you are already signed into, for the case where
+  logging in is not something to automate. It opens its own page and never navigates your tabs.
+- `npm test` runs the fixtures in `test/`: compactness, stable refs, forms, secrets, overlays, the
+  three wait states, ambiguous targets, ARIA dropdowns, console, network, and the MCP protocol.
+
+## Limits, so they are not a surprise
+
+- Chromium only. Firefox and WebKit are not wired up.
+- One page at a time. A link that opens a tab is followed; there is no tab switcher.
+- `snapshot` describes interactive elements and headings. It is not a reader for prose-heavy pages —
+  use `js` for that.
+- `network` starts recording when the server starts driving, so it has nothing from before that.
+
+## Licence
+
+Commercial. See [LICENSE](LICENSE).

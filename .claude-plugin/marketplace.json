@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "rebel-studios",
+  "description": "Tools from Rebel Studios for agents that have to work real software",
+  "owner": {
+    "name": "Rebel Studios",
+    "email": "contact@rebelstudiossoftware.com"
+  },
+  "plugins": [
+    {
+      "name": "agent-browser",
+      "displayName": "Agent Browser",
+      "description": "A browser an agent can actually drive. Compact page snapshots instead of whole-page accessibility dumps, clicks that survive cookie bars, credentials that never enter the transcript, and the console and network log when a page misbehaves.",
+      "version": "0.2.0",
+      "author": {
+        "name": "Rebel Studios",
+        "email": "contact@rebelstudiossoftware.com"
+      },
+      "category": "productivity",
+      "homepage": "https://rebelstudiossoftware.com",
+      "source": "./"
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 // description: 'button "Next"', 'link Pricing', or plain text.
 import { chromium } from "playwright";
 import { readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { collect, render } from "./snapshot.mjs";
@@ -15,6 +16,12 @@ let browser = null; // only in ephemeral mode, where the context doesn't own the
 let page = null;
 let inflight = 0;
 let lastReq = 0;
+// DevTools signals an agent cannot get from the DOM. Bounded, because a chatty page would
+// otherwise grow these without limit over a long session, and cleared on navigation so
+// "errors on this page" means THIS page rather than everything since the server started.
+const LOG_CAP = { console: 200, network: 400 };
+let consoleLog = [];
+let netLog = [];
 
 /** A persistent context, so a login made once survives between sessions. Headless unless AB_HEADED=1. */
 export async function session({ fresh = false } = {}) {
@@ -56,6 +63,12 @@ const dialogs = [];
 let acceptNextConfirm = false;
 export const takeDialogs = () => dialogs.splice(0).map((d) => `a ${d.type} said: "${d.message}" (${d.outcome})`);
 
+/** Append to a bounded log, dropping the oldest. An unbounded one grows for the whole session. */
+function push(log, kind, entry) {
+  log.push(entry);
+  if (log.length > LOG_CAP[kind]) log.splice(0, log.length - LOG_CAP[kind]);
+}
+
 function watch(p) {
   p.on("dialog", async (d) => {
     const type = d.type();
@@ -72,6 +85,35 @@ function watch(p) {
   const done = () => { inflight = Math.max(0, inflight - 1); };
   p.on("requestfinished", done);
   p.on("requestfailed", done);
+  // CONSOLE AND NETWORK, the two things a page will not tell you through the DOM. A tracker that
+  // fires, a 500 on an XHR and a thrown error are all invisible to a snapshot: the Apollo pixel on
+  // trade-guard.pro was only provable from the network log, because it is injected after hydration
+  // and leaves nothing in the served HTML.
+  p.on("console", (m) => {
+    const type = m.type();
+    if (type !== "error" && type !== "warning" && type !== "log") return;
+    push(consoleLog, "console", { type, text: m.text().slice(0, 300), at: Date.now() });
+  });
+  p.on("pageerror", (e) => push(consoleLog, "console", { type: "pageerror", text: String(e.message || e).split("\n")[0].slice(0, 300), at: Date.now() }));
+  p.on("response", (r) => {
+    const req = r.request();
+    push(netLog, "network", { url: r.url().slice(0, 300), method: req.method(), status: r.status(), type: req.resourceType(), at: Date.now() });
+  });
+  p.on("requestfailed", (r) => push(netLog, "network", {
+    url: r.url().slice(0, 300), method: r.method(), status: 0,
+    failure: (r.failure()?.errorText || "failed").slice(0, 80), type: r.resourceType(), at: Date.now(),
+  }));
+  // A new document means a new page's worth of errors; keeping the old ones makes a clean page
+  // look broken. Only the main frame counts - an iframe navigating is not a new page.
+  //
+  // CLEARED WHEN THE NAVIGATION IS REQUESTED, not on framenavigated. framenavigated fires after
+  // the new document has committed, which is after its OWN response event, so clearing there
+  // deleted the main document's entry - the log read "no requests recorded for this page" on a
+  // page that had just served one. Caught by using this on trade-guard.pro while it was 502ing:
+  // the 502 itself had vanished from the log.
+  p.on("request", (r) => {
+    if (r.isNavigationRequest() && r.frame() === p.mainFrame()) { consoleLog = []; netLog = []; }
+  });
   // when the DOM last changed, so "still loading" can be told from "not there"
   p.addInitScript(() => {
     window.__abMut = Date.now();
@@ -146,10 +188,30 @@ export async function locate(target) {
     : [p.getByRole("button", { name: t }), p.getByRole("link", { name: t }), p.getByLabel(t), p.getByPlaceholder(t), p.getByText(t, { exact: false })];
   for (const c of candidates) {
     const n = await c.count().catch(() => 0);
-    for (let i = 0; i < Math.min(n, 5); i++) if (await c.nth(i).isVisible().catch(() => false)) return c.nth(i);
+    const visible = [];
+    for (let i = 0; i < Math.min(n, 8); i++) if (await c.nth(i).isVisible().catch(() => false)) visible.push(c.nth(i));
+    if (!visible.length) continue;
+    // FIRST-MATCH-WINS WAS SILENTLY WRONG. On Google Groups "Create group" is both the sidebar
+    // button and the wizard's submit; taking the first one reopened the sidebar instead of
+    // creating the group, and nothing in the reply said a choice had been made. Still act on the
+    // first (usually right, and stopping would be worse), but record it so the reply can say so.
+    if (visible.length > 1) {
+      const where = await Promise.all(visible.slice(0, 4).map(async (v) => {
+        const d = await describe(v).catch(() => "element");
+        const box = await v.boundingBox().catch(() => null);
+        return box ? `${d} at ${Math.round(box.x)},${Math.round(box.y)}` : d;
+      }));
+      lastAmbiguity = `${visible.length} visible elements match ${JSON.stringify(t)} - used the first. Others: ${where.slice(1).join("; ")}. Pass a snapshot ref (e12) to be exact.`;
+    }
+    return visible[0];
   }
   return null;
 }
+
+// Set by locate() when a target was ambiguous; drained by whatever acted, so the reply can admit
+// that it picked one of several rather than leaving the caller to find out from the result.
+let lastAmbiguity = null;
+export const takeAmbiguity = () => { const a = lastAmbiguity; lastAmbiguity = null; return a; };
 
 /**
  * How an element is named in replies: its label, never a field's value. (A value can be a secret
@@ -220,8 +282,10 @@ export async function click(target, opts = {}) {
   const loc = await locate(target);
   if (!loc) return `no visible element matches ${JSON.stringify(target)}\n\n${await snapshot({ find: /^e\d+$/.test(target) ? "" : String(target).split(/\s+/).pop(), limit: 20 })}`;
   const what = await describe(loc);
+  const ambiguous = takeAmbiguity();
   if (await loc.isDisabled().catch(() => false)) return `${what} is disabled`;
   const notes = await clearPath(p, loc);
+  if (ambiguous) notes.push(ambiguous);
   const before = p.url();
   try {
     await loc.click({ timeout: 5000 });
@@ -300,10 +364,34 @@ export async function fillSecret(target, key) {
 }
 
 export async function select(target, option) {
+  const p = await session();
   const loc = await locate(target);
-  if (!loc) return `no visible select matches ${JSON.stringify(target)}`;
-  const picked = await loc.selectOption({ label: option }).catch(() => loc.selectOption(option)).catch((e) => e);
-  return picked instanceof Error ? `could not pick ${JSON.stringify(option)}: ${picked.message.split("\n")[0]}` : `picked ${JSON.stringify(option)} in ${await describe(loc)}`;
+  if (!loc) return `no visible dropdown matches ${JSON.stringify(target)}`;
+  const native = await loc.evaluate((el) => el.tagName === "SELECT").catch(() => false);
+  if (native) {
+    const picked = await loc.selectOption({ label: option }).catch(() => loc.selectOption(option)).catch((e) => e);
+    return picked instanceof Error
+      ? `could not pick ${JSON.stringify(option)}: ${picked.message.split("\n")[0]}`
+      : `picked ${JSON.stringify(option)} in ${await describe(loc)}`;
+  }
+  // NOT A <select>, WHICH IS THE COMMON CASE ON A REAL APP. Material, Angular and every design
+  // system build dropdowns from [role=listbox]/[role=combobox] with [role=option] children, and
+  // selectOption throws "Element is not a <select> element" on all of them - hit on Google Groups,
+  // where picking "Anyone can join" took a click on the box and a click on the option.
+  await loc.click({ timeout: 5000 }).catch(() => {});
+  const opt = p.getByRole("option", { name: option, exact: false });
+  const n = await opt.count().catch(() => 0);
+  for (let i = 0; i < Math.min(n, 8); i++) {
+    const cand = opt.nth(i);
+    if (!(await cand.isVisible().catch(() => false))) continue;
+    await cand.click({ timeout: 5000 }).catch(() => {});
+    // Confirm from the page, not from the click landing: aria-selected is the dropdown's own
+    // answer, and a click that looked fine but did not register is the failure mode that matters.
+    const ok = await cand.evaluate((el) => el.getAttribute("aria-selected") === "true" || el.getAttribute("aria-checked") === "true").catch(() => false);
+    return `picked ${JSON.stringify(option)} in ${await describe(loc)}${ok ? "" : " (the option did not report itself selected - check with a snapshot)"}`;
+  }
+  const names = await opt.evaluateAll((els) => els.slice(0, 8).map((e) => e.innerText.trim().slice(0, 40))).catch(() => []);
+  return `no option matching ${JSON.stringify(option)} appeared after opening ${await describe(loc)}${names.length ? `. Options offered: ${names.join(", ")}` : ""}`;
 }
 
 /** Attach local files to a file input (or the input behind an "Upload" button). */
@@ -385,10 +473,67 @@ export async function back() {
   return snapshot();
 }
 
+/**
+ * A picture the model can actually SEE, in one call.
+ *
+ * The old version wrote a PNG and returned "saved /tmp/x.png", which is not seeing anything: the
+ * agent then had to read the file back, so every look at a page cost two round-trips and the
+ * caller had to invent a path it did not want. Now the image comes back inline and `path` is
+ * optional, for when a file is genuinely wanted (a report, a diff against a later shot).
+ *
+ * JPEG rather than PNG because the job is reading a layout, not archiving pixels: q72 is visually
+ * the same at reading size and roughly a fifth of the bytes of the PNG.
+ */
 export async function screenshot(path, { full = false } = {}) {
   const p = await session();
-  await p.screenshot({ path, fullPage: full });
-  return `saved ${path}`;
+  const buf = await p.screenshot({ fullPage: full, type: "jpeg", quality: 72 });
+  if (path) await writeFile(path, buf).catch(() => {});
+  return {
+    image: buf.toString("base64"),
+    mime: "image/jpeg",
+    note: `${full ? "full page" : "viewport"}, ${Math.round(buf.length / 1024)} KB${path ? `, also saved to ${path}` : ""}`,
+  };
+}
+
+/**
+ * The console, which is where a page admits what went wrong. `level` narrows to
+ * "error" (errors and uncaught exceptions only) or a substring to match.
+ */
+export async function consoleMessages({ level, limit = 40 } = {}) {
+  await session();
+  let rows = consoleLog;
+  if (level === "error") rows = rows.filter((r) => r.type === "error" || r.type === "pageerror");
+  else if (level) rows = rows.filter((r) => r.type === level || r.text.toLowerCase().includes(String(level).toLowerCase()));
+  if (!rows.length) return consoleLog.length ? `no console messages match; ${consoleLog.length} in total on this page` : "the console is clean on this page";
+  const shown = rows.slice(-limit);
+  const head = `${rows.length} console message${rows.length === 1 ? "" : "s"}${rows.length > shown.length ? `, last ${shown.length}` : ""}:`;
+  return [head, ...shown.map((r) => `  [${r.type}] ${r.text}`)].join("\n");
+}
+
+/**
+ * The network log. `failed` keeps only failures and 4xx/5xx; `thirdParty` keeps only requests to a
+ * different registrable domain than the page (how you catch a tracker the page never mentions);
+ * `match` is a substring of the URL.
+ */
+export async function network({ failed = false, thirdParty = false, match, limit = 40 } = {}) {
+  const p = await session();
+  const host = await p.evaluate(() => location.hostname).catch(() => "");
+  // Compare the last two labels, so cdn.example.com counts as the same site as example.com but
+  // aplo-evnt.com does not. Good enough without shipping a public-suffix list.
+  const site = (h) => h.split(".").slice(-2).join(".");
+  let rows = netLog;
+  if (failed) rows = rows.filter((r) => r.status === 0 || r.status >= 400);
+  if (thirdParty) rows = rows.filter((r) => { try { return site(new URL(r.url).hostname) !== site(host); } catch { return false; } });
+  if (match) rows = rows.filter((r) => r.url.toLowerCase().includes(String(match).toLowerCase()));
+  if (!rows.length) return netLog.length ? `no requests match; ${netLog.length} on this page` : "no requests recorded for this page";
+  const shown = rows.slice(-limit);
+  const head = `${rows.length} request${rows.length === 1 ? "" : "s"}${rows.length > shown.length ? `, last ${shown.length}` : ""}:`;
+  const line = (r) => `  ${r.failure ? "FAILED" : r.status} ${r.method} ${r.type === "document" ? "" : r.type + " "}${r.url}${r.failure ? ` (${r.failure})` : ""}`;
+  // Third-party domains summarised too: the question is usually "who else is this page talking to",
+  // and a list of 40 URLs answers it worse than a list of hosts.
+  const hosts = [...new Set(shown.map((r) => { try { return new URL(r.url).hostname; } catch { return "?"; } }))];
+  const tail = hosts.length > 1 ? [`hosts: ${hosts.join(", ")}`] : [];
+  return [head, ...shown.map(line), ...tail].join("\n");
 }
 
 export async function js(code) {

@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Console, network and the dropdowns that are not selects</title>
+
+<h1>Devtools fixture</h1>
+
+<!-- An ARIA listbox, which is what a real design system ships instead of <select>. selectOption
+     throws "Element is not a <select> element" on this; picking an option needs two clicks. -->
+<p id="who-label">Who can join group</p>
+<div role="listbox" aria-label="Who can join group" tabindex="0" id="who">
+  <div role="option" aria-selected="true">Only invited users</div>
+  <div role="option" aria-selected="false">Anyone can ask</div>
+  <div role="option" aria-selected="false">Anyone can join</div>
+</div>
+
+<!-- Two visible controls with the SAME accessible name, the trap that made a click on Google
+     Groups reopen the sidebar instead of submitting the wizard. -->
+<button id="sidebar-save">Save</button>
+<div style="margin-top:40px">
+  <div role="button" id="wizard-save" tabindex="0">Save</div>
+</div>
+
+<script>
+  // Console output of each kind the console tool reports on.
+  console.log("a plain log line");
+  console.warn("a warning about something");
+  console.error("a real error in the page");
+
+  // An uncaught exception, which arrives as pageerror rather than console.
+  setTimeout(() => { throw new Error("thrown after load"); }, 10);
+
+  // A request to another origin that fails: stands in for a tracker pixel, which is the thing
+  // the network tool exists to catch. Kept to a domain that cannot resolve so no traffic leaves.
+  fetch("https://tracker.invalid-test-domain.example/pixel?id=abc").catch(() => {});
+
+  // Clicking an option in the ARIA listbox moves aria-selected, like a real widget.
+  document.getElementById("who").addEventListener("click", (e) => {
+    const opt = e.target.closest('[role=option]');
+    if (!opt) return;
+    for (const o of document.querySelectorAll('#who [role=option]')) o.setAttribute("aria-selected", "false");
+    opt.setAttribute("aria-selected", "true");
+  });
+</script>
