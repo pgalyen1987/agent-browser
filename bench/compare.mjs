@@ -5,9 +5,15 @@
 //
 // THE TWO ROUTES, end to end, because that is what a caller experiences:
 //
-//   Playwright   goto(waitUntil: "networkidle") then locator("body").ariaSnapshot()
-//                — the accessibility tree an agent is handed to decide what to click, which is the
-//                  role it plays in Playwright's own MCP server.
+//   Playwright   goto(waitUntil: "networkidle") then page._snapshotForAI()
+//                — THE EXACT STRING Playwright's own MCP server hands a model. An earlier version
+//                  of this benchmark used locator("body").ariaSnapshot(), which is a different and
+//                  SMALLER thing: it omits the [ref=e1] and [cursor=pointer] annotations that MCP
+//                  adds so a model can address elements. Checked against the live @playwright/mcp
+//                  server on 2026-09-25 — it produced 233,451 characters for the Wikipedia page
+//                  where ariaSnapshot gave 139,663, so the old figures understated the gap by
+//                  nearly half. _snapshotForAI is an internal API (leading underscore) and could
+//                  change; if it disappears, re-check against the MCP server directly.
 //
 //   this tool    open(url) from src/browser.mjs — its own settle(), then the compact outline.
 //
@@ -55,7 +61,8 @@ for (const url of urls) {
     row.ariaTimedOut = true; // it never went quiet; the agent waits out the clock and continues
   }
   try {
-    row.aria = (await page.locator("body").ariaSnapshot()).length;
+    const snap = await page._snapshotForAI();
+    row.aria = (typeof snap === "string" ? snap : snap.full).length;
   } catch (e) {
     row.error = e.message.split("\n")[0].slice(0, 50);
   }

@@ -75,7 +75,10 @@ server.registerTool("next", {
   inputSchema: {},
 }, safe(() => b.next()));
 
-server.registerTool("back", { description: "Go back one page.", inputSchema: {} }, safe(() => b.back()));
+server.registerTool("back", {
+  description: "Go back one page in history and return a fresh snapshot of where you land.",
+  inputSchema: {},
+}, safe(() => b.back()));
 
 // The image comes back INLINE, so looking at a page is one call rather than screenshot-then-read.
 // `path` is optional now: most looks want to see, not to keep a file.
@@ -106,6 +109,9 @@ server.registerTool("js", {
   inputSchema: { code: z.string() },
 }, safe(({ code }) => b.js(code)));
 
-server.registerTool("close", { description: "Close the browser (the saved profile stays).", inputSchema: {} }, safe(async () => { await b.close(); return "closed"; }));
+server.registerTool("close", {
+  description: "Close the browser. The saved profile stays, so a login made earlier survives to the next session.",
+  inputSchema: {},
+}, safe(async () => { await b.close(); return "closed"; }));
 
 await server.connect(new StdioServerTransport());
