@@ -28,7 +28,7 @@ Any other MCP client: run `npx -y @rebelstudios/agent-browser` as a stdio server
 As a Claude Code plugin:
 
 ```
-/plugin marketplace add rebel-studios/agent-browser
+/plugin marketplace add pgalyen1987/agent-browser
 /plugin install agent-browser
 ```
 
