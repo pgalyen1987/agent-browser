@@ -22,6 +22,9 @@ let lastReq = 0;
 const LOG_CAP = { console: 200, network: 400 };
 let consoleLog = [];
 let netLog = [];
+// Request object -> its log entry, so an outcome can be filled in later. Weak: when Playwright
+// drops the Request, the mapping goes with it.
+let netIndex = new WeakMap();
 
 /** A persistent context, so a login made once survives between sessions. Headless unless AB_HEADED=1. */
 export async function session({ fresh = false } = {}) {
@@ -95,14 +98,20 @@ function watch(p) {
     push(consoleLog, "console", { type, text: m.text().slice(0, 300), at: Date.now() });
   });
   p.on("pageerror", (e) => push(consoleLog, "console", { type: "pageerror", text: String(e.message || e).split("\n")[0].slice(0, 300), at: Date.now() }));
+  // Logged when the request is MADE, then updated with its outcome.
+  //
+  // Recording only on response/requestfailed made a request that had not finished invisible, which
+  // hides the two cases you most want to see: a call still hanging, and a tracker whose DNS is
+  // slow. It also made the test for third-party requests flaky, because whether the cross-origin
+  // fetch had failed yet by the time the page settled was a race.
   p.on("response", (r) => {
-    const req = r.request();
-    push(netLog, "network", { url: r.url().slice(0, 300), method: req.method(), status: r.status(), type: req.resourceType(), at: Date.now() });
+    const e = netIndex.get(r.request());
+    if (e) e.status = r.status();
   });
-  p.on("requestfailed", (r) => push(netLog, "network", {
-    url: r.url().slice(0, 300), method: r.method(), status: 0,
-    failure: (r.failure()?.errorText || "failed").slice(0, 80), type: r.resourceType(), at: Date.now(),
-  }));
+  p.on("requestfailed", (r) => {
+    const e = netIndex.get(r);
+    if (e) { e.status = 0; e.failure = (r.failure()?.errorText || "failed").slice(0, 80); }
+  });
   // A new document means a new page's worth of errors; keeping the old ones makes a clean page
   // look broken. Only the main frame counts - an iframe navigating is not a new page.
   //
@@ -113,6 +122,9 @@ function watch(p) {
   // the 502 itself had vanished from the log.
   p.on("request", (r) => {
     if (r.isNavigationRequest() && r.frame() === p.mainFrame()) { consoleLog = []; netLog = []; }
+    const e = { url: r.url().slice(0, 300), method: r.method(), status: null, type: r.resourceType(), at: Date.now() };
+    netIndex.set(r, e);
+    push(netLog, "network", e);
   });
   // when the DOM last changed, so "still loading" can be told from "not there"
   p.addInitScript(() => {
@@ -522,13 +534,13 @@ export async function network({ failed = false, thirdParty = false, match, limit
   // aplo-evnt.com does not. Good enough without shipping a public-suffix list.
   const site = (h) => h.split(".").slice(-2).join(".");
   let rows = netLog;
-  if (failed) rows = rows.filter((r) => r.status === 0 || r.status >= 400);
+  if (failed) rows = rows.filter((r) => r.status === 0 || (r.status !== null && r.status >= 400));
   if (thirdParty) rows = rows.filter((r) => { try { return site(new URL(r.url).hostname) !== site(host); } catch { return false; } });
   if (match) rows = rows.filter((r) => r.url.toLowerCase().includes(String(match).toLowerCase()));
   if (!rows.length) return netLog.length ? `no requests match; ${netLog.length} on this page` : "no requests recorded for this page";
   const shown = rows.slice(-limit);
   const head = `${rows.length} request${rows.length === 1 ? "" : "s"}${rows.length > shown.length ? `, last ${shown.length}` : ""}:`;
-  const line = (r) => `  ${r.failure ? "FAILED" : r.status} ${r.method} ${r.type === "document" ? "" : r.type + " "}${r.url}${r.failure ? ` (${r.failure})` : ""}`;
+  const line = (r) => `  ${r.failure ? "FAILED" : r.status === null ? "pending" : r.status} ${r.method} ${r.type === "document" ? "" : r.type + " "}${r.url}${r.failure ? ` (${r.failure})` : ""}`;
   // Third-party domains summarised too: the question is usually "who else is this page talking to",
   // and a list of 40 URLs answers it worse than a list of hosts.
   const hosts = [...new Set(shown.map((r) => { try { return new URL(r.url).hostname; } catch { return "?"; } }))];
