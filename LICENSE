@@ -1,47 +1,31 @@
-agent-browser — Commercial Licence
-Copyright (c) 2026 Rebel Studios. All rights reserved.
+MIT License
 
-This software is licensed, not sold.
+Copyright (c) 2026 Rebel Studios
 
-WHAT YOU MAY DO
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-A purchased licence covers one natural person. That person may install and use the software on any
-number of machines they personally use, for any purpose including commercial work and client work,
-and may modify it for their own use.
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
 
-A team licence covers a stated number of people in one organisation, on the same terms.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-WHAT YOU MAY NOT DO
+---
 
-  1. Redistribute, publish, resell, sublicense or share the software or its source, whether
-     modified or not, including inside a product or service you distribute.
-  2. Make it available as a hosted or bundled service to anyone outside your licence.
-  3. Remove or alter this notice.
+A note on what this covers, because it is easy to get wrong:
 
-NO WARRANTY
-
-The software is provided "as is", without warranty of any kind, express or implied, including but
-not limited to the warranties of merchantability, fitness for a particular purpose and
-non-infringement. In no event shall the authors or copyright holders be liable for any claim,
-damages or other liability, whether in an action of contract, tort or otherwise, arising from, out
-of or in connection with the software or its use.
+This licence covers agent-browser itself. It depends on Playwright, the Model Context Protocol SDK
+and Zod, each licensed separately by its own authors under its own terms, and Playwright downloads
+browser builds from Microsoft under theirs. None of that is affected by this licence.
 
 The software drives a real web browser and acts on real websites on your behalf. You are
 responsible for what you point it at: the terms of the sites you visit, the accounts you sign into,
-and the credentials you make available to it.
-
-THIRD-PARTY COMPONENTS
-
-This software depends on Playwright, the Model Context Protocol SDK and Zod, each licensed
-separately by its own authors under its own terms. Those licences govern those components and are
-unaffected by this one. Playwright downloads browser builds from Microsoft; their terms apply to
-those builds.
-
-REFUNDS
-
-If it does not do what this repository says it does, write to the address below within 30 days and
-you will be refunded.
-
-CONTACT
-
-Rebel Studios — contact@rebelstudiossoftware.com
+and the credentials you make available to it. It reports a bot challenge or a block page rather
+than trying to get around one, and that is deliberate.

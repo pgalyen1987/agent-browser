@@ -2,12 +2,27 @@
 
 A browser an agent can actually drive, as an MCP tool set over Playwright.
 
+**Measured against Playwright's own snapshot, on five live pages: 19.9x smaller and 1.3x faster.**
+Run `node bench/compare.mjs` and check it yourself — that is what the benchmark is for.
+
 Playwright was built to test pages you wrote, where you already know the selectors. An agent is
 working pages it has never seen, and the friction is different: the page description is too big to
 read, the element reference goes stale, a cookie bar eats the click, and "not found" is
 indistinguishable from "not loaded yet".
 
 ## Install
+
+It is an MCP server, so it is not tied to one model or one editor — any MCP client can run it.
+
+```
+claude mcp add agent-browser -- npx -y @rebelstudios/agent-browser
+```
+
+Any other MCP client: run `npx -y @rebelstudios/agent-browser` as a stdio server.
+
+```json
+{ "mcpServers": { "agent-browser": { "command": "npx", "args": ["-y", "@rebelstudios/agent-browser"] } } }
+```
 
 As a Claude Code plugin:
 
@@ -16,14 +31,8 @@ As a Claude Code plugin:
 /plugin install agent-browser
 ```
 
-Or as a plain MCP server:
-
-```
-git clone <this repo> ~/agent-browser && cd ~/agent-browser && npm install
-claude mcp add agent-browser -- node ~/agent-browser/bin/mcp.mjs
-```
-
-The first run fetches the Chromium build Playwright drives, once, and says so on stderr.
+The first run fetches the Chromium build Playwright drives, once, and says so on stderr (never on
+stdout, which is the protocol channel).
 
 ## What it fixes
 
@@ -31,7 +40,7 @@ Each row is a thing that cost us time first, then got a tool.
 
 | Friction | What it does instead |
 | --- | --- |
-| Whole-page accessibility dumps flood the context | `snapshot`/`open` return a compact outline: headings, forms and dialogs as groups, each interactive element as `[e12] button "Next" (disabled)`, navigation and footers collapsed to six links and a count, then 400 characters of page text. Measured 3x to 18x smaller than Playwright's aria snapshot on real pages. |
+| Whole-page accessibility dumps flood the context | `snapshot`/`open` return a compact outline: headings, forms and dialogs as groups, each interactive element as `[e12] button "Next" (disabled)`, navigation and footers collapsed to six links and a count, then 400 characters of page text. Measured 19.9x smaller than Playwright's aria snapshot across five live pages (1.1x to 30.6x each); `bench/compare.mjs` reproduces it. |
 | Element refs go stale after a re-render | Refs live on the element (`data-ab`), so a button keeps `e12` across snapshots for as long as it exists. Targets can also be `'button "Next"'` or a field label. |
 | Cookie bars and chat bubbles intercept clicks | `click` scrolls to the target, checks what is actually on top of it, presses the overlay's Accept/Close button or hides the layer, and says which. |
 | Two things on the page share a name | `click` acts on the first and **says** it had a choice, with where the others are. Silence here is how a click meant for a wizard's submit button reopens a sidebar instead. |
@@ -42,6 +51,7 @@ Each row is a thing that cost us time first, then got a tool.
 | A screenshot you cannot see | `screenshot` returns the image itself, so looking at a page is one call rather than save-then-read. |
 | You cannot tell what a page really did | `console` gives its errors, warnings and uncaught exceptions. `network` gives its requests, with `failed`, `thirdParty` and `match` filters. Both scoped to the current page. |
 | Auth expiry shows up as a redirect | Snapshots start with `auth: this looks like a login page` when the page is one. |
+| A bot wall snapshots like an empty site | A challenge or block page is named — `blocked: this is an interstitial bot check (Cloudflare)` — instead of coming back as a page with nothing on it. It reports the wall; it does not get around one. |
 | Wizards need "Next" found by hand every step | `next` presses the page's forward button, preferring one inside a form or dialog. |
 
 Also: `fill`, `upload` (file inputs, or an Upload button that opens a chooser), `press`, `back`,
@@ -76,6 +86,14 @@ Source tells you what a page might do. The network log tells you what it did.
   use `js` for that.
 - `network` starts recording when the server starts driving, so it has nothing from before that.
 
+## What it will not do
+
+It does not try to defeat bot protection. A Cloudflare interstitial, a block page or a rate-limit
+notice is **reported** so you know what you are looking at, and the way through is to be a browser
+you are genuinely signed in to (`bin/attach.mjs`) or to use the site's API. Dressing up as something
+else is a race that gets lost on the next update, and it breaks the terms of most sites worth
+visiting.
+
 ## Licence
 
-Commercial. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

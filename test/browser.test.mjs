@@ -129,3 +129,18 @@ test("an ambiguous target says so instead of silently taking the first", async (
   assert.match(out, /2 visible elements match "Save"/);
   assert.match(out, /Pass a snapshot ref/);
 });
+
+test("a bot wall is named, not snapshotted as an empty page", async () => {
+  // Reddit answers a blocked request with a styled page carrying almost no interactive elements,
+  // so the snapshot read like a site with nothing on it and the caller went hunting for selectors
+  // that were never going to exist. This REPORTS the wall; it does not get around it.
+  const s = await b.open(page("blocked.html"));
+  assert.match(s, /^blocked: this is an interstitial bot check/m);
+  assert.match(s, /Cloudflare/);
+  assert.match(s, /already signed in to/);
+});
+
+test("an ordinary page is not mistaken for a bot wall", async () => {
+  const s = await b.open(page("form.html"));
+  assert.doesNotMatch(s, /^blocked:/m);
+});

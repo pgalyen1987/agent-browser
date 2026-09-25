@@ -179,6 +179,27 @@ export function collect({ limit = 60, find = "", scope = "", maxText = 400 } = {
     overlays,
     text,
     loginLike: passwordish || /\/(log-?in|sign-?in|signin|auth|sso|oauth|session)(\/|\?|$)/i.test(location.pathname),
+    // A BOT WALL IS NOT AN EMPTY PAGE, and it used to read exactly like one. Reddit answers a
+    // blocked request with a styled page carrying almost no interactive elements, so the snapshot
+    // came back looking like a site with nothing on it and the caller went hunting for a selector
+    // that was never going to exist. Naming it costs one line and saves that whole detour.
+    //
+    // This REPORTS the wall, it does not get around it: the fix is to be a real signed-in browser
+    // (attach to one you already use) or to use the site's API, not to dress up as something else.
+    challenge: (() => {
+      const t = (document.body?.innerText || "").slice(0, 3000);
+      const hit = [
+        [/just a moment|checking your browser|verifying you are human|verify you are human/i, "an interstitial bot check"],
+        [/blocked by network security|you have been blocked|access denied|request blocked/i, "a block page"],
+        [/enable javascript and cookies to continue/i, "a bot check wanting JS and cookies"],
+        [/unusual traffic|automated queries/i, "a rate-limit or automation notice"],
+      ].find(([re]) => re.test(t));
+      if (!hit) return null;
+      const vendor = /cloudflare|cf-chl|__cf/i.test(document.documentElement.innerHTML.slice(0, 20000))
+        ? "Cloudflare" : /perimeterx|px-captcha/i.test(document.documentElement.innerHTML.slice(0, 20000))
+        ? "PerimeterX" : /akamai|_abck/i.test(document.cookie) ? "Akamai" : null;
+      return { kind: hit[1], vendor };
+    })(),
   };
 }
 
@@ -186,6 +207,12 @@ export function collect({ limit = 60, find = "", scope = "", maxText = 400 } = {
 export function render(s, { withText = true } = {}) {
   const head = [`${s.title || "(untitled)"} | ${s.url}`];
   if (s.loginLike) head.push("auth: this looks like a login page (session missing or expired?)");
+  if (s.challenge)
+    head.push(
+      `blocked: this is ${s.challenge.kind}${s.challenge.vendor ? ` (${s.challenge.vendor})` : ""}, not the page you asked for. ` +
+        `The elements below belong to the challenge. Use a browser you are already signed in to ` +
+        `(bin/attach.mjs), or the site's API.`,
+    );
   head.push(...s.overlays);
   const more = s.hidden ? [`… ${s.hidden} more interactive elements not shown (narrow with find: or scope:)`] : [];
   const body = s.lines.length ? s.lines : ["(no visible interactive elements)"];

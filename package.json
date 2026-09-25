@@ -1,5 +1,5 @@
 {
-  "name": "agent-browser",
+  "name": "@rebelstudios/agent-browser",
   "version": "0.2.0",
   "private": true,
   "description": "A browser an agent can actually drive: compact snapshots, overlay-proof clicks, secret-safe fills, and the console and network log.",
@@ -10,10 +10,38 @@
   "scripts": {
     "test": "node --test --test-timeout=60000 test/*.test.mjs"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "playwright": "1.57",
     "zod": "^4.6.5"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pgalyen1987/agent-browser.git"
+  },
+  "keywords": [
+    "mcp",
+    "browser",
+    "playwright",
+    "agent",
+    "automation",
+    "claude",
+    "llm"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src",
+    "bin",
+    "skills",
+    ".claude-plugin",
+    ".mcp.json",
+    "README.md",
+    "LICENSE"
+  ]
 }
