@@ -113,12 +113,12 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
 - `AB_CDP=9224` (a port or a full URL) attaches to a browser already running with
   `--remote-debugging-port=9224`, for the case where logging in is not something to automate: 2FA
   makes it impossible and doing it on someone's behalf is not the job. It opens its own page, never
-  navigates theirs, and `close` detaches rather than shutting their browser. `bin/attach.mjs` does
+  navigates theirs, and `close` detaches rather than shutting their browser. `cli/attach.mjs` does
   the same for one-off scripts outside the MCP.
 - `AB_DOWNLOADS` moves where downloads land (default `~/.cache/agent-browser/downloads`).
 - **WebKit on a distro that is not Ubuntu 24.04:** `npx playwright install-deps webkit` fails on
   Kali and Debian testing, because it apt-gets Ubuntu package names that do not exist there
-  (`libicu74`, `libjpeg-turbo8`). `node bin/webkit-deps.mjs` fetches just the shared objects WebKit
+  (`libicu74`, `libjpeg-turbo8`). `node cli/webkit-deps.mjs` fetches just the shared objects WebKit
   actually links and puts them in the bundle's own lib directory — no sudo, nothing outside
   `~/.cache`, and your system ICU untouched. Symlinking a newer ICU does not work: its symbols carry
   the major version, so the library loads and every symbol is missing.

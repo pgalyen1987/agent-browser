@@ -10,7 +10,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import * as b from "./browser.mjs";
 
-const server = new McpServer({ name: "agent-browser", version: "0.6.1" });
+const server = new McpServer({ name: "agent-browser", version: "0.7.0" });
 const text = (s) => ({ content: [{ type: "text", text: String(s) }] });
 const safe = (fn) => async (args) => {
   try { return text(await fn(args || {})); } catch (e) { return { ...text(`error: ${String(e.message || e).split("\n")[0]}`), isError: true }; }

@@ -3,11 +3,23 @@
 Every entry says what was wrong, because that is the useful half. Numbers are from
 `npm run bench` on the day, against the snapshot Playwright's MCP server sends.
 
+## 0.7.0
+
+Both of these were found by the directory's own validator during submission, which saw things no
+test here would have.
+
+- **A top-level `bin/` directory made the plugin uninstallable on Cowork and the Claude web,
+  desktop and mobile apps** — most of the reach, lost to a directory name. It is `cli/` now. npm's
+  `bin` field can point anywhere, so nothing about the `npx` entry point changed.
+- **No icon.** The artwork existed in `art/` but the directory looks in the manifest or
+  `.claude-plugin/icon.*`, so the listing would have fallen back to a GitHub avatar. The icon is
+  where it is looked for, and named in `plugin.json`.
+
 ## 0.6.1
 
 - **WebKit runs on distros that are not Ubuntu 24.04.** `npx playwright install-deps webkit`
   apt-gets Ubuntu package names that do not exist on Kali or Debian testing (`libicu74`,
-  `libjpeg-turbo8`). `bin/webkit-deps.mjs` fetches just the shared objects WebKit actually links and
+  `libjpeg-turbo8`). `cli/webkit-deps.mjs` fetches just the shared objects WebKit actually links and
   puts them in the bundle's own lib directory — no sudo, nothing outside `~/.cache`. Symlinking a
   newer ICU does not work: its symbols carry the major version, so the library loads and every
   symbol is missing. All 25 browser tests now pass on WebKit, so all three engines are verified.

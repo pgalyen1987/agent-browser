@@ -31,7 +31,7 @@ const DOWNLOAD_DIR = process.env.AB_DOWNLOADS || join(homedir(), ".cache/agent-b
 //
 // Set it to a port or a full URL. The browser has to have been started with the matching flag:
 //   google-chrome --remote-debugging-port=9224
-// bin/attach.mjs did this for one-off scripts; this makes every tool work the same way.
+// cli/attach.mjs did this for one-off scripts; this makes every tool work the same way.
 const CDP = process.env.AB_CDP ? (/^\d+$/.test(process.env.AB_CDP)
   ? `http://127.0.0.1:${process.env.AB_CDP}` : process.env.AB_CDP) : null;
 let attached = false; // when true, close() detaches and leaves the owner's browser running

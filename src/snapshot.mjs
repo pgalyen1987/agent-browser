@@ -230,7 +230,7 @@ export function render(s, { withText = true } = {}) {
     head.push(
       `blocked: this is ${s.challenge.kind}${s.challenge.vendor ? ` (${s.challenge.vendor})` : ""}, not the page you asked for. ` +
         `The elements below belong to the challenge. Use a browser you are already signed in to ` +
-        `(bin/attach.mjs), or the site's API.`,
+        `(cli/attach.mjs), or the site's API.`,
     );
   head.push(...s.overlays);
   const more = s.hidden ? [`… ${s.hidden} more interactive elements not shown (narrow with find: or scope:)`] : [];

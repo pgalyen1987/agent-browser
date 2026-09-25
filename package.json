@@ -1,10 +1,10 @@
 {
   "name": "@rebelstudios/agent-browser",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "A browser an agent can actually drive: compact snapshots, overlay-proof clicks, secret-safe fills, and the console and network log.",
   "type": "module",
   "bin": {
-    "agent-browser": "bin/mcp.mjs"
+    "agent-browser": "cli/mcp.mjs"
   },
   "scripts": {
     "test": "node --test --test-timeout=180000 test/*.test.mjs",
@@ -44,7 +44,7 @@
     "README.md",
     "art",
     "bench",
-    "bin",
+    "cli",
     "skills",
     "src"
   ],

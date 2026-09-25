@@ -16,7 +16,7 @@
 // lib directory — the one its launcher already searches. Nothing outside ~/.cache is touched, no
 // package manager is involved, and the system's own ICU is left exactly where it was.
 //
-//     node bin/webkit-deps.mjs
+//     node cli/webkit-deps.mjs
 //
 // Verified 2026-09-25 on Kali (ICU 72/76/78, libjpeg 62): all 25 browser tests pass on WebKit after.
 import { execFileSync } from "node:child_process";

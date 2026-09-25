@@ -14,9 +14,9 @@
 // It opens its OWN page and closes it afterwards. It never touches the owner's existing tabs:
 // navigating one out from under them would lose whatever they were doing.
 //
-//   node bin/attach.mjs apps                      list Play Console apps with their ids
-//   node bin/attach.mjs snap <url>                open a url and print headings + fields
-//   node bin/attach.mjs shot <url> <out.png>      screenshot it
+//   node cli/attach.mjs apps                      list Play Console apps with their ids
+//   node cli/attach.mjs snap <url>                open a url and print headings + fields
+//   node cli/attach.mjs shot <url> <out.png>      screenshot it
 import { chromium } from "playwright";
 
 const PORT = process.env.AB_CDP_PORT || 9224;
