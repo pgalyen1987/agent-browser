@@ -127,6 +127,11 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
   measured, it makes no difference there.
 - `npm test` runs the fixtures in `test/`: compactness, stable refs, forms, secrets, overlays, the
   three wait states, ambiguous targets, ARIA dropdowns, console, network, and the MCP protocol.
+- `npm run test:local` runs that same suite where `node --test` refuses to start. Some Node builds
+  ship without the internal glob module `--test` uses to expand `test/*.test.mjs` (Kali's `nodejs`
+  is one), so it throws `Missing internal module 'internal/deps/brace-expansion'` before a single
+  test runs — even on a literal filename. `test:local` lists the files itself and runs each in its
+  own process, the isolation `--test` would have given. CI stays on `npm test`.
 
 ## Limits, so they are not a surprise
 
