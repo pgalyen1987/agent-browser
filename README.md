@@ -113,6 +113,9 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
   navigates theirs, and `close` detaches rather than shutting their browser. `bin/attach.mjs` does
   the same for one-off scripts outside the MCP.
 - `AB_DOWNLOADS` moves where downloads land (default `~/.cache/agent-browser/downloads`).
+- `AB_CHANNEL=chrome` uses the installed Google Chrome instead of the Chromium build Playwright
+  ships — closer to what a visitor really runs. It does not get you past strict bot protection;
+  measured, it makes no difference there.
 - `npm test` runs the fixtures in `test/`: compactness, stable refs, forms, secrets, overlays, the
   three wait states, ambiguous targets, ARIA dropdowns, console, network, and the MCP protocol.
 
@@ -130,10 +133,20 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
 It does not try to defeat bot protection, and it will not be made to. A Cloudflare interstitial, a
 block page or a rate-limit notice is **reported** so you know what you are looking at.
 
-There are two honest ways through, and both are built in. `solve` reopens the page in a visible
-window and waits while **you** clear the challenge — a CAPTCHA asks whether a human is present, and
-if one is, they can answer it themselves; the persistent profile then keeps the cookie so later runs
-go straight through. Or `AB_CDP=9224` drives a browser you are already signed into.
+There are two honest ways through, and which one you need depends on how hard the site is refusing.
+
+`solve` reopens the page in a visible window and waits while **you** clear the challenge. A CAPTCHA
+asks whether a human is present; if one is, they can answer it themselves, and the persistent
+profile keeps the cookie so later runs go straight through. This handles ordinary CAPTCHAs.
+
+**It does not handle Cloudflare's strict mode**, and that is worth knowing before you spend three
+minutes on it. Some sites — claude.ai among them, measured — reject a Playwright-driven browser on
+sight and loop the challenge forever, headed or not, with Playwright's Chromium or the real Google
+Chrome binary. No amount of clicking clears it, because the question is not being asked of you.
+
+For those, the answer is a browser **this tool did not launch**: start Chrome yourself with
+`--remote-debugging-port=9224`, then run with `AB_CDP=9224`. The site has already cleared that
+session, so there is nothing to solve. `solve` says so rather than letting you keep clicking.
 
 What it will not do is *pretend*: spoofing a fingerprint is a race lost on the next update, it
 breaks the terms of most sites worth visiting, and it is the fastest way to get a tool delisted. Dressing up as something

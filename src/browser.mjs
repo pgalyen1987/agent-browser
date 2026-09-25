@@ -13,6 +13,11 @@ const PROFILE = process.env.AB_PROFILE || join(homedir(), ".cache/agent-browser/
 // against and what CDP attach needs, but nothing here is Chromium-specific: the snapshot runs in
 // the page, and every action goes through Playwright's own API.
 const ENGINES = { chromium, firefox, webkit };
+// AB_CHANNEL="chrome" launches the REAL Google Chrome that is installed, rather than the Chromium
+// build Playwright ships. That is not a disguise - it is a genuinely different, genuinely normal
+// browser - and it matters because Cloudflare's strict mode rejects Playwright's build outright,
+// looping its challenge forever so that even a human at a visible window cannot clear it.
+const CHANNEL = process.env.AB_CHANNEL || null;
 const ENGINE_NAME = (process.env.AB_BROWSER || "chromium").toLowerCase();
 const ENGINE = ENGINES[ENGINE_NAME] || chromium;
 const CREDS = process.env.AB_CREDS || join(homedir(), ".config/rebel-studios/creds.env");
@@ -69,6 +74,7 @@ export async function session({ fresh = false } = {}) {
   }
   if (ctx && !attached) await ctx.close().catch(() => {});
   const opts = { headless: process.env.AB_HEADED !== "1", viewport: { width: 1280, height: 900 }, acceptDownloads: true };
+  if (CHANNEL && ENGINE_NAME === "chromium") opts.channel = CHANNEL;
 
   if (CDP) {
     // Its own page, never one of theirs: navigating a tab out from under someone loses whatever
@@ -270,6 +276,11 @@ export async function solve({ seconds = 180 } = {}) {
   // Relaunch visible, on the same persistent profile, at the same page.
   const wasHeaded = process.env.AB_HEADED;
   process.env.AB_HEADED = "1";
+  // Not just visible - a REAL browser. Cloudflare's strict mode loops its challenge against
+  // Playwright's Chromium build however long a human stares at it, so a visible window alone is
+  // not enough. Measured on claude.ai: 170 seconds of a person clicking, still challenged.
+  const wasChannel = process.env.AB_CHANNEL;
+  if (!wasChannel && ENGINE_NAME === "chromium") process.env.AB_CHANNEL = "chrome";
   try {
     await close();
     const q = await session();
@@ -285,9 +296,26 @@ export async function solve({ seconds = 180 } = {}) {
         return `the challenge is cleared, and the profile keeps it — later runs should go straight through.\n\n${await snapshot()}`;
       }
     }
-    return `still showing a challenge after ${seconds}s. The window is open; clear it and call solve again, or use AB_CDP to drive a browser you are already signed into.`;
+    // STILL CHALLENGED AFTER A PERSON SAT THERE means this is not a CAPTCHA a human can clear here:
+    // Cloudflare's strict mode rejects a Playwright-driven browser on sight and loops the challenge
+    // forever. Measured on claude.ai 2026-09-25 — 170s of clicking, headed, and again with the real
+    // Google Chrome binary. Saying "try again" to that wastes another three minutes, so say the
+    // thing that actually works instead.
+    return [
+      `still challenged after ${seconds}s, which means this site is refusing the automation itself`,
+      `rather than asking a question you can answer. Clicking for longer will not change it.`,
+      ``,
+      `The way in is a browser THIS TOOL DID NOT LAUNCH — one you started yourself, already signed`,
+      `in, where the site has already cleared you:`,
+      ``,
+      `  1. close Chrome, then start it with:  google-chrome --remote-debugging-port=9224`,
+      `  2. run this tool with:                AB_CDP=9224`,
+      ``,
+      `Every tool then drives that session, and close() detaches instead of shutting your browser.`,
+    ].join("\n");
   } finally {
     if (wasHeaded === undefined) delete process.env.AB_HEADED; else process.env.AB_HEADED = wasHeaded;
+    if (wasChannel === undefined) delete process.env.AB_CHANNEL; else process.env.AB_CHANNEL = wasChannel;
   }
 }
 
