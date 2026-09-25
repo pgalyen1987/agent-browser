@@ -47,7 +47,6 @@ jobs:
   # distros where Playwright's own installer fails, and it can rot silently.
   webkit:
     runs-on: ubuntu-latest
-    continue-on-error: true # informative, not a gate: the runner is Ubuntu and rarely needs the fix
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
