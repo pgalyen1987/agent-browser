@@ -36,15 +36,16 @@
     "node": ">=20"
   },
   "files": [
-    "src",
-    "bin",
-    "bench",
-    "art",
-    "skills",
     ".claude-plugin",
     ".mcp.json",
+    "CHANGELOG.md",
+    "LICENSE",
     "README.md",
-    "LICENSE"
+    "art",
+    "bench",
+    "bin",
+    "skills",
+    "src"
   ],
   "homepage": "https://rebelstudiossoftware.com/agent-browser.html"
 }

@@ -1,0 +1,79 @@
+# Tests on every push, across the engines this claims to support.
+#
+# WHY IT RUNS THE BENCHMARK TOO. The README, the landing page and the store listing all quote a
+# ratio, and the pages it is measured against are live — they change without asking us. A claim
+# nobody re-checks quietly becomes a lie, so the benchmark runs weekly and prints its table into
+# the job summary. It does not fail the build on a moved number (a Wikipedia edit is not a
+# regression), it just makes the drift visible where someone will see it.
+name: test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1" # Monday morning, to catch drift in the published numbers
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one engine failing should not hide the state of the others
+      matrix:
+        browser: [chromium, firefox]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: install the browser under test
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: test
+        run: npm test
+        env:
+          AB_BROWSER: ${{ matrix.browser }}
+
+  # WebKit is separate because on a runner it needs its own system libraries, and because the
+  # interesting question there is whether bin/webkit-deps.mjs still works — that script exists for
+  # distros where Playwright's own installer fails, and it can rot silently.
+  webkit:
+    runs-on: ubuntu-latest
+    continue-on-error: true # informative, not a gate: the runner is Ubuntu and rarely needs the fix
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install webkit
+      - name: the no-sudo dependency fix still works
+        run: node bin/webkit-deps.mjs || true
+      - run: npm test
+        env:
+          AB_BROWSER: webkit
+
+  benchmark:
+    # Only on the schedule and by hand: it drives five live public pages, and doing that on every
+    # push would be rude to them and slow for us.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: measure, and put the table where it will be read
+        run: |
+          {
+            echo '## Benchmark'
+            echo
+            echo 'Against the snapshot Playwright'"'"'s MCP server sends, on five live pages.'
+            echo 'The published numbers are in README.md — if these have drifted, update them.'
+            echo
+            echo '```'
+            npm run --silent bench
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
