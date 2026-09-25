@@ -235,3 +235,11 @@ test("a wall named only in the page TITLE is still caught", async () => {
   const s = await b.open(page("title-wall.html"));
   assert.match(s, /^blocked: this is an interstitial bot check/m);
 });
+
+test("solve refuses honestly when it cannot help, rather than pretending", async () => {
+  // The tests run with AB_EPHEMERAL=1, where clearing a challenge buys nothing that survives —
+  // so it says that instead of opening a window and wasting someone's time on it.
+  await b.open(page("blocked.html"));
+  const out = await b.solve({ seconds: 1 });
+  assert.match(out, /AB_EPHEMERAL=1 throws the profile away/);
+});

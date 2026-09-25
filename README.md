@@ -59,6 +59,7 @@ Each row is a thing that cost us time first, then got a tool.
 | An iframe snapshots as nothing at all | Child frames are collected too and their refs prefixed — `[f1e3] button "Pay now"`. A card form, a consent dialog and an embedded editor are all iframes, so "the page looks empty" was a silent and common failure. A frame on another origin is named as unreadable rather than dropped. |
 | A link opens a tab and there is no way back | `tabs` lists them (marking the one being driven), switches by index or URL substring, and closes one. |
 | A download goes nowhere | The browser discards downloads unless something asks for them, so "Export CSV" appeared to do nothing. They save to disk and `downloads` lists them with their paths. |
+| A bot wall is blocking a page you are allowed to see | `solve` reopens it in a **visible window** so you clear the challenge yourself, then carries on. The profile is persistent, so later runs go straight through headless. It asks the human who is already sitting there; it does not spoof anything. |
 | You are signed in, but the tool is not | `AB_CDP=9224` drives a browser that is already running and already signed in, so every tool works against that session. Closing detaches instead of shutting their browser. |
 
 Also: `fill`, `upload` (file inputs, or an Upload button that opens a chooser), `press`, `back`,
@@ -126,9 +127,16 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
 
 ## What it will not do
 
-It does not try to defeat bot protection. A Cloudflare interstitial, a block page or a rate-limit
-notice is **reported** so you know what you are looking at, and the way through is to be a browser
-you are genuinely signed in to (`bin/attach.mjs`) or to use the site's API. Dressing up as something
+It does not try to defeat bot protection, and it will not be made to. A Cloudflare interstitial, a
+block page or a rate-limit notice is **reported** so you know what you are looking at.
+
+There are two honest ways through, and both are built in. `solve` reopens the page in a visible
+window and waits while **you** clear the challenge — a CAPTCHA asks whether a human is present, and
+if one is, they can answer it themselves; the persistent profile then keeps the cookie so later runs
+go straight through. Or `AB_CDP=9224` drives a browser you are already signed into.
+
+What it will not do is *pretend*: spoofing a fingerprint is a race lost on the next update, it
+breaks the terms of most sites worth visiting, and it is the fastest way to get a tool delisted. Dressing up as something
 else is a race that gets lost on the next update, and it breaks the terms of most sites worth
 visiting.
 

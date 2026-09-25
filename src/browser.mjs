@@ -241,6 +241,56 @@ export async function downloads() {
   return downloaded.map((d) => `${d.name} — ${d.path}${d.bytes != null ? ` (${d.bytes} bytes)` : ""}`).join("\n");
 }
 
+/**
+ * Hand a bot wall to the person sitting there, then carry on.
+ *
+ * This is the honest way past a challenge, and the only one this tool will do. A CAPTCHA exists to
+ * ask whether a human is present; if one is, the answer is yes and they can say so themselves. What
+ * it refuses to do is *pretend* — spoofing a fingerprint is a race lost on the next update, breaks
+ * the terms of most sites worth visiting, and would get the plugin delisted.
+ *
+ * It works because the profile is persistent: the browser reopens at the same URL with a visible
+ * window, the person clears the challenge once, and the cookie that buys stays bought. Later runs
+ * go straight through, headless, with no challenge at all.
+ *
+ * Returns when the wall is gone, or says plainly that it is still there.
+ */
+export async function solve({ seconds = 180 } = {}) {
+  const p = await session();
+  const url = p.url();
+  if (!url || url === "about:blank") return "no page open to solve";
+  if (process.env.AB_EPHEMERAL === "1") {
+    return "AB_EPHEMERAL=1 throws the profile away, so solving a challenge here buys nothing that survives. Unset it and try again.";
+  }
+  if (!process.env.DISPLAY && process.platform === "linux") {
+    return "no DISPLAY, so a window cannot be shown. Run this where there is a desktop, or attach to a browser you are already signed into with AB_CDP.";
+  }
+  if (attached) return "already driving your own browser — clear the challenge in the window you can see, then carry on.";
+
+  // Relaunch visible, on the same persistent profile, at the same page.
+  const wasHeaded = process.env.AB_HEADED;
+  process.env.AB_HEADED = "1";
+  try {
+    await close();
+    const q = await session();
+    await q.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
+    const deadline = Date.now() + seconds * 1000;
+    // Poll the page's own verdict rather than a clock: the challenge is gone when the snapshot
+    // stops saying it is there.
+    while (Date.now() < deadline) {
+      await q.waitForTimeout(1500);
+      const state = await q.evaluate(collect, { limit: 5 }).catch(() => null);
+      if (state && !state.challenge) {
+        await settle(q);
+        return `the challenge is cleared, and the profile keeps it — later runs should go straight through.\n\n${await snapshot()}`;
+      }
+    }
+    return `still showing a challenge after ${seconds}s. The window is open; clear it and call solve again, or use AB_CDP to drive a browser you are already signed into.`;
+  } finally {
+    if (wasHeaded === undefined) delete process.env.AB_HEADED; else process.env.AB_HEADED = wasHeaded;
+  }
+}
+
 export async function close() {
   // ATTACHED MEANS BORROWED. Closing the context would shut the owner's browser and every tab in
   // it, so only the page we opened goes, and the connection is dropped.

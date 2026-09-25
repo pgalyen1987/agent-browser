@@ -10,7 +10,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import * as b from "./browser.mjs";
 
-const server = new McpServer({ name: "agent-browser", version: "0.4.3" });
+const server = new McpServer({ name: "agent-browser", version: "0.5.0" });
 const text = (s) => ({ content: [{ type: "text", text: String(s) }] });
 const safe = (fn) => async (args) => {
   try { return text(await fn(args || {})); } catch (e) { return { ...text(`error: ${String(e.message || e).split("\n")[0]}`), isError: true }; }
@@ -103,6 +103,11 @@ server.registerTool("network", {
   description: "The network log for the current page. failed: only failures and 4xx/5xx. thirdParty: only requests leaving the page's own domain (how you catch a tracker the page does not mention). match: a substring of the URL.",
   inputSchema: { failed: z.boolean().optional(), thirdParty: z.boolean().optional(), match: z.string().optional(), limit: z.number().int().optional() },
 }, safe((o) => b.network(o)));
+
+server.registerTool("solve", {
+  description: "A bot wall is blocking the page: reopen it in a VISIBLE window so the person at the keyboard can clear the challenge themselves, then carry on. The profile is persistent, so later runs go straight through. This does not defeat or spoof anything — it asks the human who is already there.",
+  inputSchema: { seconds: z.number().optional().describe("how long to wait for them (default 180)") },
+}, safe((o) => b.solve(o || {})));
 
 server.registerTool("tabs", {
   description: "List the open tabs, or switch to one with `to` (an index, or a substring of its URL), or close one with `shut`. A link that opens a tab is followed; this is how you get back.",
