@@ -2,8 +2,8 @@
 
 A browser an agent can actually drive, as an MCP tool set over Playwright.
 
-**Measured against what Playwright's own MCP server sends a model, on five live pages: 37.6x smaller
-and 1.4x faster.** One Wikipedia article is 246,434 characters there and 4,557 here. Run
+**Measured against what Playwright's own MCP server sends a model, on five live pages: 37.2x smaller
+and 1.6x faster.** One Wikipedia article is 246,434 characters there and 4,557 here. Run
 `npm run bench` and check it yourself — that is what the benchmark is for.
 
 Playwright was built to test pages you wrote, where you already know the selectors. An agent is
@@ -41,7 +41,7 @@ Each row is a thing that cost us time first, then got a tool.
 
 | Friction | What it does instead |
 | --- | --- |
-| Whole-page accessibility dumps flood the context | `snapshot`/`open` return a compact outline: headings, forms and dialogs as groups, each interactive element as `[e12] button "Next" (disabled)`, navigation and footers collapsed to six links and a count, then 400 characters of page text. Measured 37.6x smaller than the snapshot Playwright's MCP server sends (1.5x to 54.1x per page); `npm run bench` reproduces it. |
+| Whole-page accessibility dumps flood the context | `snapshot`/`open` return a compact outline: headings, forms and dialogs as groups, each interactive element as `[e12] button "Next" (disabled)`, navigation and footers collapsed to six links and a count, then 400 characters of page text. Measured 37.2x smaller than the snapshot Playwright's MCP server sends (1.5x to 53.1x per page); `npm run bench` reproduces it. |
 | Element refs go stale after a re-render | Refs live on the element (`data-ab`), so a button keeps `e12` across snapshots for as long as it exists. Targets can also be `'button "Next"'` or a field label. |
 | Cookie bars and chat bubbles intercept clicks | `click` scrolls to the target, checks what is actually on top of it, presses the overlay's Accept/Close button or hides the layer, and says which. |
 | Two things on the page share a name | `click` acts on the first and **says** it had a choice, with where the others are. Silence here is how a click meant for a wizard's submit button reopens a sidebar instead. |
