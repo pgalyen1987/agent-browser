@@ -16,6 +16,7 @@ let browser = null; // only in ephemeral mode, where the context doesn't own the
 let page = null;
 let inflight = 0;
 let lastReq = 0;
+let reqCount = 0; // monotonic: settle uses it to tell whether the page has fetched for itself yet
 // DevTools signals an agent cannot get from the DOM. Bounded, because a chatty page would
 // otherwise grow these without limit over a long session, and cleared on navigation so
 // "errors on this page" means THIS page rather than everything since the server started.
@@ -84,7 +85,7 @@ function watch(p) {
   // requestfinished nor requestfailed, so `inflight` leaks upward and never returns to 0 -
   // measured, after a settle() keyed on `inflight === 0` hit its cap on every page including
   // example.com. A timestamp cannot leak.
-  p.on("request", () => { inflight++; lastReq = Date.now(); });
+  p.on("request", () => { inflight++; reqCount++; lastReq = Date.now(); });
   const done = () => { inflight = Math.max(0, inflight - 1); };
   p.on("requestfinished", done);
   p.on("requestfailed", done);
@@ -164,20 +165,34 @@ export async function snapshot(opts = {}) {
 async function settle(p, ms = 2000) {
   await p.waitForLoadState("domcontentloaded", { timeout: ms }).catch(() => {});
   const start = Date.now(), end = start + ms;
-  // A FLOOR BEFORE THE EARLY EXIT CAN FIRE. Straight after first paint there is a window where
-  // the DOM is quiet and nothing has been requested yet, because the page's own script has not
-  // run its fetches. Exiting there returns a shell: the boss dashboard came back reading
-  // "Scanning ~ ..." with every data card still empty. 400ms is enough for a framework to mount
-  // and fire its first request, after which the lastReq check keeps us waiting honestly.
-  const FLOOR = 400;
+  // A GATE BEFORE THE EARLY EXIT CAN FIRE. Straight after first paint there is a window where the
+  // DOM is quiet and nothing has been requested yet, because the page's own script has not run its
+  // fetches. Exiting there returns a shell: the boss dashboard came back reading "Scanning ~ ..."
+  // with every data card still empty.
+  //
+  // This used to be a flat 400ms wait, and that turned out to be the binding constraint on most
+  // pages rather than the page itself: measured 2026-09-25, settle exited at 426-430ms on three of
+  // four real pages — the floor plus one poll tick — while the page had been ready earlier.
+  //
+  // So the gate now opens on the SIGNAL rather than the clock: once the page has issued a request
+  // of its own since navigation, its script is demonstrably running and the quiet checks below can
+  // be trusted. The 150ms is only a backstop for a page that never fetches anything at all.
+  //
+  // Verified to change the waiting and not the answer: identical snapshots on five live pages, and
+  // on the boss dashboard — the page this floor was written for — it is both faster (2370ms ->
+  // 1400ms) and MORE consistent, returning the same 2605 characters on every run where the old
+  // floor returned 2578/2603/2605 and so was sometimes catching the page mid-render.
+  const FLOOR = 150;
+  const reqAtStart = reqCount;
   while (Date.now() < end) {
-    if (Date.now() - start < FLOOR) { await p.waitForTimeout(60); continue; }
+    const elapsed = Date.now() - start;
+    if (elapsed < FLOOR && reqCount === reqAtStart) { await p.waitForTimeout(40); continue; }
     const quiet = await p.evaluate(() => Date.now() - (window.__abMut || 0)).catch(() => 9999);
     // 250ms since the last DOM change AND since the last request STARTED. Both are timestamps,
     // so neither can get stuck the way a counter does; a page with a heartbeat settles between
     // beats instead of never settling at all.
     if (quiet >= 250 && Date.now() - lastReq >= 250) return;
-    await p.waitForTimeout(60);
+    await p.waitForTimeout(40);
   }
 }
 
