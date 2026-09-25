@@ -203,6 +203,12 @@ export function collect({ limit = 60, find = "", scope = "", maxText = 400 } = {
         [/blocked by network security|you have been blocked|access denied|request blocked/i, "a block page"],
         [/enable javascript and cookies to continue/i, "a bot check wanting JS and cookies"],
         [/unusual traffic|automated queries/i, "a rate-limit or automation notice"],
+        // A CAPTCHA that asks politely still stops you. DuckDuckGo answers a suspected bot with
+        // "Unfortunately, bots use DuckDuckGo too. Please complete the following challenge… Select
+        // all squares containing a duck" — none of the phrasings above, so it snapshotted as an
+        // ordinary page and the caller read an empty result as "no matches". Found by hitting it.
+        [/complete the following challenge|was made by a human|select all (squares|images)|i'?m not a robot|are you a robot/i, "a CAPTCHA"],
+        [/bots use .{0,24} too/i, "a CAPTCHA"],
       ].find(([re]) => re.test(t));
       if (!hit) return null;
       const vendor = /cloudflare|cf-chl|__cf/i.test(document.documentElement.innerHTML.slice(0, 20000))

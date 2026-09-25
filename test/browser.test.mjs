@@ -220,3 +220,10 @@ test("tabs can be listed and switched, so a new tab is not a dead end", async ()
   assert.match(back, /switched to it/);
   assert.match(back, /Export CSV/); // and we are really on that page again
 });
+
+test("a politely worded CAPTCHA is still named as a wall", async () => {
+  // Hit for real on DuckDuckGo: none of the "just a moment" phrasings appear, so it read as an
+  // ordinary page with one button and the empty result looked like "no matches".
+  const s = await b.open(page("captcha.html"));
+  assert.match(s, /^blocked: this is a CAPTCHA/m);
+});
