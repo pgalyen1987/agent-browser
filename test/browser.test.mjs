@@ -227,3 +227,11 @@ test("a politely worded CAPTCHA is still named as a wall", async () => {
   const s = await b.open(page("captcha.html"));
   assert.match(s, /^blocked: this is a CAPTCHA/m);
 });
+
+test("a wall named only in the page TITLE is still caught", async () => {
+  // Cloudflare's interstitial on claude.ai puts "Just a moment..." in the title and only
+  // "Performing security verification" in the body, so a body-only check read it as an ordinary
+  // page. Third time this detector has been too literal about wording; the title counts now.
+  const s = await b.open(page("title-wall.html"));
+  assert.match(s, /^blocked: this is an interstitial bot check/m);
+});

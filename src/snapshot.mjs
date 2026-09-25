@@ -197,9 +197,12 @@ export function collect({ limit = 60, find = "", scope = "", maxText = 400 } = {
     // This REPORTS the wall, it does not get around it: the fix is to be a real signed-in browser
     // (attach to one you already use) or to use the site's API, not to dress up as something else.
     challenge: (() => {
-      const t = (document.body?.innerText || "").slice(0, 3000);
+      // THE TITLE COUNTS TOO. Cloudflare's interstitial on claude.ai puts "Just a moment..." in the
+      // title and only "Performing security verification" in the body, so a body-only check read it
+      // as an ordinary page — the third time this detector has been too literal about wording.
+      const t = ((document.title || "") + "\n" + (document.body?.innerText || "")).slice(0, 3000);
       const hit = [
-        [/just a moment|checking your browser|verifying you are human|verify you are human/i, "an interstitial bot check"],
+        [/just a moment|checking your browser|verifying you are human|verify you are human|performing security verification|security check to access/i, "an interstitial bot check"],
         [/blocked by network security|you have been blocked|access denied|request blocked/i, "a block page"],
         [/enable javascript and cookies to continue/i, "a bot check wanting JS and cookies"],
         [/unusual traffic|automated queries/i, "a rate-limit or automation notice"],
