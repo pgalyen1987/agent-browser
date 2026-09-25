@@ -1,7 +1,7 @@
 // One browser session and the actions an agent needs, each answering in words about what happened
 // rather than throwing on the first surprise. Targets are refs from a snapshot ("e12") or a short
 // description: 'button "Next"', 'link Pricing', or plain text.
-import { chromium } from "playwright";
+import { chromium, firefox, webkit } from "playwright";
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -9,6 +9,12 @@ import { join } from "node:path";
 import { collect, render } from "./snapshot.mjs";
 
 const PROFILE = process.env.AB_PROFILE || join(homedir(), ".cache/agent-browser/profile");
+// AB_BROWSER picks the engine. Chromium is the default because it is what most sites are built
+// against and what CDP attach needs, but nothing here is Chromium-specific: the snapshot runs in
+// the page, and every action goes through Playwright's own API.
+const ENGINES = { chromium, firefox, webkit };
+const ENGINE_NAME = (process.env.AB_BROWSER || "chromium").toLowerCase();
+const ENGINE = ENGINES[ENGINE_NAME] || chromium;
 const CREDS = process.env.AB_CREDS || join(homedir(), ".config/rebel-studios/creds.env");
 
 let ctx = null;
@@ -49,10 +55,13 @@ export async function session({ fresh = false } = {}) {
   if (ctx) await ctx.close().catch(() => {});
   const opts = { headless: process.env.AB_HEADED !== "1", viewport: { width: 1280, height: 900 } };
   if (process.env.AB_EPHEMERAL === "1") {
-    browser = await chromium.launch({ headless: opts.headless });
+    browser = await ENGINE.launch({ headless: opts.headless });
     ctx = await browser.newContext({ viewport: opts.viewport });
   } else {
-    ctx = await chromium.launchPersistentContext(PROFILE, opts);
+    // Each engine gets its own profile directory: they are not interchangeable on disk, and
+    // pointing Firefox at a Chromium profile fails in ways that look like a bug in this tool.
+    ctx = await ENGINE.launchPersistentContext(
+      ENGINE_NAME === "chromium" ? PROFILE : `${PROFILE}-${ENGINE_NAME}`, opts);
   }
   page = ctx.pages()[0] || (await ctx.newPage());
   watch(page);
@@ -144,7 +153,11 @@ export async function close() {
 
 export async function snapshot(opts = {}) {
   const p = await session();
-  return render(await p.evaluate(collect, opts), opts);
+  const out = render(await p.evaluate(collect, opts), opts);
+  // Asking for the page in full resets what "changed" is measured against, so an explicit
+  // snapshot always tells the whole truth and the next diff is honest about the same baseline.
+  if (!opts.find && !opts.scope) lastSnap = out;
+  return out;
 }
 
 /**
@@ -295,11 +308,68 @@ async function clearPath(p, loc) {
   return notes;
 }
 
+// The last snapshot we handed back, so the next one can say what CHANGED instead of repeating it.
+// Reset on navigation, where "changed" stops being meaningful.
+let lastSnap = null;
+let diffsOn = true;
+/** Turn diff replies off (the benchmark measures both routes; callers who want every reply in full). */
+export function setDiffs(on) { diffsOn = !!on; lastSnap = null; }
+
+/**
+ * What an action returns: what happened, then the page.
+ *
+ * THE PAGE IS SENT AS A DIFF WHERE THAT IS HONEST, and this is the single biggest saving in real
+ * use. A page costs ~3,000 characters; a ten-step task used to cost ten of those, even though
+ * steps two through ten mostly re-sent what step one already said. Clicking "Next" in a wizard
+ * changes a handful of lines and repeats sixty.
+ *
+ * So after an action on the SAME page, only the added, removed and changed lines go back, with a
+ * count of what held still. The full snapshot is still sent when it is the honest answer: on a new
+ * URL, when there is nothing to compare against, or when more than half the page moved — past that
+ * point a diff is both longer and harder to read than simply saying what is there now.
+ *
+ * Refs survive a re-render (they live on the element), which is what makes the comparison mean
+ * something: a line that is "unchanged" really is the same element, not a coincidence of text.
+ */
+function diffSnap(prev, next) {
+  if (!prev) return { text: next, full: true };
+  const line = (l) => l.trim();
+  const prevLines = prev.split("\n").map(line);
+  const nextLines = next.split("\n").map(line);
+  const prevSet = new Set(prevLines);
+  const nextSet = new Set(nextLines);
+  const added = nextLines.filter((l) => l && !prevSet.has(l));
+  const gone = prevLines.filter((l) => l && !nextSet.has(l));
+  const held = nextLines.filter((l) => l && nextSet.has(l) && prevSet.has(l)).length;
+  if (!added.length && !gone.length) return { text: `the page is unchanged (${held} elements)`, full: false };
+  // More than half the page moved: a diff stops being the shorter or clearer answer.
+  if (added.length + gone.length > held) return { text: next, full: true };
+  const body = [
+    `changed: +${added.length} -${gone.length}, ${held} unchanged`,
+    ...added.slice(0, 30).map((l) => `+ ${l}`),
+    ...gone.slice(0, 10).map((l) => `- ${l}`),
+  ];
+  if (added.length > 30) body.push(`… ${added.length - 30} more added (ask for a snapshot to see all)`);
+  return { text: body.join("\n"), full: false };
+}
+
 async function after(p, before, notes, { snap = true } = {}) {
   await settle(p, 3000);
   const out = [...notes, ...takeDialogs()];
-  if (p.url() !== before) out.push(`now at ${p.url()}`);
-  if (snap) out.push("", await snapshot({ limit: 40 }));
+  const moved = p.url() !== before;
+  if (moved) out.push(`now at ${p.url()}`);
+  if (snap) {
+    // THE BASELINE IS TAKEN BEFORE THE FRESH SNAPSHOT, because snapshot() updates lastSnap itself.
+    // Reading it afterwards compared the page against a copy of itself and answered "the page is
+    // unchanged" to every action, however much had moved -- a wrong answer that was also short,
+    // so it looked like a saving in the benchmark right up until a test asked what it actually said.
+    const baseline = lastSnap;
+    const fresh = await snapshot({ limit: 40 });
+    // A new document is a new page; there is nothing meaningful to diff against.
+    const d = moved || !diffsOn ? { text: fresh, full: true } : diffSnap(baseline, fresh);
+    lastSnap = fresh;
+    out.push("", d.text);
+  }
   return out.join("\n");
 }
 

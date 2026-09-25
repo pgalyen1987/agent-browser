@@ -144,3 +144,36 @@ test("an ordinary page is not mistaken for a bot wall", async () => {
   const s = await b.open(page("form.html"));
   assert.doesNotMatch(s, /^blocked:/m);
 });
+
+test("after an action the page comes back as a diff, naming what moved", async () => {
+  // A page costs thousands of characters and re-sending all of it after a click that moved two
+  // lines is most of what a multi-step task used to spend.
+  await b.open(page("form.html"));
+  await b.fill("Email", "pat@example.com");
+  const out = await b.click("Next");
+  assert.match(out, /clicked/);
+  assert.match(out, /changed: \+\d+ -\d+, \d+ unchanged/);
+  assert.match(out, /\+ \[e\d+\] email "Email" \(required\) = "pat@example.com"/);
+  assert.match(out, /Welcome pat@example.com/); // the thing the click actually did
+});
+
+test("an action that changes nothing says so, rather than inventing a change", async () => {
+  // The other half of the contract. This caught a real bug: the baseline was read AFTER the fresh
+  // snapshot had already overwritten it, so every action compared the page against a copy of
+  // itself and answered "unchanged" however much had moved — wrong, and short enough to look like
+  // a saving in the benchmark.
+  await b.open(page("form.html"));
+  // "Terms" and the nav links all carry href="#", which changes the URL and so honestly returns a
+  // full snapshot. #inert is the only control on the page that truly does nothing.
+  const out = await b.click("Does nothing");
+  assert.match(out, /the page is unchanged \(\d+ elements\)/);
+});
+
+test("asking for a snapshot resets what 'changed' is measured against", async () => {
+  // Without this an explicit snapshot would be compared against a baseline the caller never saw.
+  await b.open(page("form.html"));
+  const full = await b.snapshot();
+  assert.match(full, /\[e\d+\]/);
+  const again = await b.snapshot();
+  assert.match(again, /\[e\d+\]/); // a snapshot is always the whole truth, never a diff
+});

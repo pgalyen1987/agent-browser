@@ -2,8 +2,8 @@
 
 A browser an agent can actually drive, as an MCP tool set over Playwright.
 
-**Measured against what Playwright's own MCP server sends a model, on five live pages: 37.2x smaller
-and 1.6x faster.** One Wikipedia article is 246,434 characters there and 4,557 here. Run
+**Measured against what Playwright's own MCP server sends a model, on five live pages: 44.3x smaller
+and 1.7x faster.** One Wikipedia article is 241,988 characters there and 3,877 here. Run
 `npm run bench` and check it yourself — that is what the benchmark is for.
 
 Playwright was built to test pages you wrote, where you already know the selectors. An agent is
@@ -41,7 +41,7 @@ Each row is a thing that cost us time first, then got a tool.
 
 | Friction | What it does instead |
 | --- | --- |
-| Whole-page accessibility dumps flood the context | `snapshot`/`open` return a compact outline: headings, forms and dialogs as groups, each interactive element as `[e12] button "Next" (disabled)`, navigation and footers collapsed to six links and a count, then 400 characters of page text. Measured 37.2x smaller than the snapshot Playwright's MCP server sends (1.5x to 53.1x per page); `npm run bench` reproduces it. |
+| Whole-page accessibility dumps flood the context | `snapshot`/`open` return a compact outline: headings, forms and dialogs as groups, each interactive element as `[e12] button "Next" (disabled)`, navigation and footers collapsed to six links and a count, then 400 characters of page text. Measured 44.3x smaller than the snapshot Playwright's MCP server sends (1.5x to 62.8x per page); `npm run bench` reproduces it. |
 | Element refs go stale after a re-render | Refs live on the element (`data-ab`), so a button keeps `e12` across snapshots for as long as it exists. Targets can also be `'button "Next"'` or a field label. |
 | Cookie bars and chat bubbles intercept clicks | `click` scrolls to the target, checks what is actually on top of it, presses the overlay's Accept/Close button or hides the layer, and says which. |
 | Two things on the page share a name | `click` acts on the first and **says** it had a choice, with where the others are. Silence here is how a click meant for a wizard's submit button reopens a sidebar instead. |
@@ -68,6 +68,32 @@ settled it, and it is what settled that the fix had worked.
 
 Source tells you what a page might do. The network log tells you what it did.
 
+## How it compares, including where it loses
+
+Against Playwright's MCP server — the default an agent is handed — it is **44.3x smaller** across
+five live pages. That number is large because Playwright's format is verbose, not because this is
+magic, so here is the closer comparison too.
+
+**browser-use** already builds a compact representation and is far more widely adopted. Measured
+the same day, its own `llm_representation()` on the same five pages totals **38,101 characters
+against 11,397** — so about **3.3x**, and it **beats this tool on example.com** (138 vs 208), where
+a page with almost nothing on it still costs us a header and a URL. `bench/browser-use.py`
+reproduces that.
+
+**Stagehand is not measured.** v4 depends on `@browserbasehq/sdk` and expects a paid Browserbase
+account. An unmeasured competitor is left unmeasured rather than estimated.
+
+## What a task costs, not just a page
+
+After an action on the same page, only what changed comes back — `changed: +2 -2, 17 unchanged` and
+the lines themselves — because clicking "Next" in a wizard moves a handful of lines and repeats
+sixty. The full page is still sent when that is the honest answer: on a new URL, with nothing to
+compare against, or when more than half the page moved.
+
+Measured with `node bench/session.mjs`: **1.7x cheaper across the actions** of a click-heavy task.
+On a form-filling task it saves **nothing at all**, because `fill` and `select` already answer in
+twenty characters and never had the problem. Both numbers are in the benchmark.
+
 ## Notes
 
 - One persistent profile at `~/.cache/agent-browser/profile`, so a login made once survives.
@@ -81,7 +107,8 @@ Source tells you what a page might do. The network log tells you what it did.
 
 ## Limits, so they are not a surprise
 
-- Chromium only. Firefox and WebKit are not wired up.
+- WebKit is not tested. Chromium and Firefox are; `AB_BROWSER=firefox` switches engine, and the
+  whole browser suite passes on both.
 - One page at a time. A link that opens a tab is followed; there is no tab switcher.
 - `snapshot` describes interactive elements and headings. It is not a reader for prose-heavy pages —
   use `js` for that.
