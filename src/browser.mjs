@@ -241,8 +241,23 @@ export async function tabs({ to, shut } = {}) {
  * A download used to go nowhere: Playwright discards it unless something asks for it, so clicking
  * "Export CSV" appeared to do nothing at all. They now land in a directory and this lists them.
  */
-export async function downloads() {
+export async function downloads({ waitSeconds = 0 } = {}) {
   await session();
+  // A DOWNLOAD LANDS AFTER THE CLICK RETURNS, so asking straight away often finds nothing and the
+  // caller has to invent a sleep. My own test had to swallow a bogus `wait` for exactly this.
+  // `waitSeconds` waits for the count to grow, and returns the moment it does.
+  if (waitSeconds > 0) {
+    const had = downloaded.length;
+    const until = Date.now() + waitSeconds * 1000;
+    while (Date.now() < until && downloaded.length === had) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    if (downloaded.length === had) {
+      return `nothing downloaded in ${waitSeconds}s.` +
+        (downloaded.length ? ` ${downloaded.length} from earlier:\n` +
+          downloaded.map((d) => `${d.name} — ${d.path}`).join("\n") : ` (they save to ${DOWNLOAD_DIR})`);
+    }
+  }
   if (!downloaded.length) return `no downloads yet (they save to ${DOWNLOAD_DIR})`;
   return downloaded.map((d) => `${d.name} — ${d.path}${d.bytes != null ? ` (${d.bytes} bytes)` : ""}`).join("\n");
 }
@@ -317,6 +332,49 @@ export async function solve({ seconds = 180 } = {}) {
     if (wasHeaded === undefined) delete process.env.AB_HEADED; else process.env.AB_HEADED = wasHeaded;
     if (wasChannel === undefined) delete process.env.AB_CHANNEL; else process.env.AB_CHANNEL = wasChannel;
   }
+}
+
+/**
+ * The page as prose, for when the answer is in the writing rather than the controls.
+ *
+ * The snapshot describes what you can DO with a page; it deliberately says almost nothing about
+ * what the page SAYS, because an outline of a hundred controls plus the full article would be the
+ * dump this tool exists to avoid. That left "read the page" going through the `js` escape hatch,
+ * which is a gap with a workaround rather than a feature.
+ *
+ * Takes the main content, drops the furniture (nav, header, footer, script, style, aside), and
+ * returns it in slices so a long article can be walked rather than swallowed. `find` jumps to the
+ * first slice containing a phrase, which is usually what you actually wanted.
+ */
+export async function read({ chars = 3000, slice = 1, find = "" } = {}) {
+  const p = await session();
+  const text = await p.evaluate(({ find }) => {
+    const root = document.querySelector("main, [role=main], article") || document.body;
+    const copy = root.cloneNode(true);
+    for (const el of copy.querySelectorAll("nav, header, footer, aside, script, style, noscript, [role=navigation], [role=contentinfo], [role=banner]")) el.remove();
+    return (copy.innerText || "").replace(/\n{3,}/g, "\n\n").replace(/[ \t]+/g, " ").trim();
+  }, { find }).catch(() => "");
+  if (!text) return "no readable text on this page (it may be an app rather than a document — try snapshot)";
+
+  const total = Math.max(1, Math.ceil(text.length / chars));
+
+  if (find) {
+    const at = text.toLowerCase().indexOf(String(find).toLowerCase());
+    if (at < 0) return `"${find}" is not in the ${text.length} characters of this page (${total} slices)`;
+    // CENTRED ON THE MATCH, not "whichever slice the match happens to start in". Snapping to a
+    // fixed grid cuts the phrase in half whenever it straddles a boundary — which is most of the
+    // time with a small window, and is useless exactly when someone is looking for something.
+    const from = Math.max(0, at - Math.floor((chars - find.length) / 2));
+    const to = Math.min(text.length, from + chars);
+    const lead = from > 0 ? "…" : "";
+    const tail = to < text.length ? "…" : "";
+    return `around "${find}" (character ${at} of ${text.length})\n\n${lead}${text.slice(from, to)}${tail}`;
+  }
+
+  const n = Math.min(Math.max(1, slice), total);
+  const body = text.slice((n - 1) * chars, n * chars);
+  const head = total > 1 ? `slice ${n} of ${total} (${text.length} characters in all)\n\n` : "";
+  return head + body;
 }
 
 export async function close() {

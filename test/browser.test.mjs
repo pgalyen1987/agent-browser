@@ -203,8 +203,10 @@ test("a download is saved and listed, instead of vanishing", async () => {
   // to do nothing at all.
   await b.open(page("downloads.html"));
   await b.click("Export CSV");
-  await b.wait("Export", { timeout: 2000 }).catch(() => {});
-  const list = await b.downloads();
+  // waitSeconds, instead of the sleep-shaped `wait` this used to need: a download lands after the
+  // click returns, and having to swallow an unrelated wait was the API being awkward at exactly
+  // the moment it mattered.
+  const list = await b.downloads({ waitSeconds: 5 });
   assert.match(list, /report\.csv/);
   assert.doesNotMatch(list, /no downloads yet/);
 });
@@ -242,4 +244,27 @@ test("solve refuses honestly when it cannot help, rather than pretending", async
   await b.open(page("blocked.html"));
   const out = await b.solve({ seconds: 1 });
   assert.match(out, /AB_EPHEMERAL=1 throws the profile away/);
+});
+
+test("read gives the page as prose, without the navigation", async () => {
+  // The snapshot says what you can DO with a page and almost nothing about what it SAYS, which
+  // left "read this page" going through the js escape hatch — a gap with a workaround.
+  await b.open(page("form.html"));
+  const out = await b.read();
+  assert.match(out, /Sign in/);
+  assert.doesNotMatch(out, /Link 7/); // the 150 nav links are furniture, not content
+});
+
+test("read slices a long page and find jumps to the right slice", async () => {
+  await b.open(page("framed.html"));
+  const whole = await b.read({ chars: 100000 });
+  assert.ok(whole.length > 0);
+  const sliced = await b.read({ chars: 20 });
+  assert.match(sliced, /slice 1 of \d+/);
+  // A small window on purpose: the match must survive it, which it did not when find snapped to a
+  // fixed slice grid and cut the phrase in half.
+  const found = await b.read({ chars: 20, find: "Review order" });
+  assert.match(found, /Review order/);
+  assert.match(found, /around "Review order" \(character \d+ of \d+\)/);
+  assert.match(await b.read({ find: "nothing like this exists here" }), /is not in the/);
 });

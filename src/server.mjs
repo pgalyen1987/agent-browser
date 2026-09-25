@@ -10,7 +10,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import * as b from "./browser.mjs";
 
-const server = new McpServer({ name: "agent-browser", version: "0.5.1" });
+const server = new McpServer({ name: "agent-browser", version: "0.6.0" });
 const text = (s) => ({ content: [{ type: "text", text: String(s) }] });
 const safe = (fn) => async (args) => {
   try { return text(await fn(args || {})); } catch (e) { return { ...text(`error: ${String(e.message || e).split("\n")[0]}`), isError: true }; }
@@ -115,9 +115,14 @@ server.registerTool("tabs", {
 }, safe((o) => b.tabs(o || {})));
 
 server.registerTool("downloads", {
-  description: "Files the page has downloaded this session, saved to disk with their paths. A download is discarded by the browser unless something asks for it, so without this a click on Export appears to do nothing.",
-  inputSchema: {},
-}, safe(() => b.downloads()));
+  description: "Files the page has downloaded this session, saved to disk with their paths. A download is discarded by the browser unless something asks for it, so without this a click on Export appears to do nothing. waitSeconds waits for one to arrive, since a download lands after the click returns.",
+  inputSchema: { waitSeconds: z.number().optional() },
+}, safe((o) => b.downloads(o || {})));
+
+server.registerTool("read", {
+  description: "The page as prose, with the navigation and furniture stripped: for when the answer is in the writing rather than the controls. Long pages come in slices; `find` jumps to the slice containing a phrase. Use snapshot when you need to act on the page, this when you need to read it.",
+  inputSchema: { chars: z.number().optional(), slice: z.number().optional(), find: z.string().optional() },
+}, safe((o) => b.read(o || {})));
 
 server.registerTool("js", {
   description: "Evaluate a JavaScript expression in the page and return the result (trimmed). The escape hatch.",

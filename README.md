@@ -58,7 +58,8 @@ Each row is a thing that cost us time first, then got a tool.
 | Wizards need "Next" found by hand every step | `next` presses the page's forward button, preferring one inside a form or dialog. |
 | An iframe snapshots as nothing at all | Child frames are collected too and their refs prefixed — `[f1e3] button "Pay now"`. A card form, a consent dialog and an embedded editor are all iframes, so "the page looks empty" was a silent and common failure. A frame on another origin is named as unreadable rather than dropped. |
 | A link opens a tab and there is no way back | `tabs` lists them (marking the one being driven), switches by index or URL substring, and closes one. |
-| A download goes nowhere | The browser discards downloads unless something asks for them, so "Export CSV" appeared to do nothing. They save to disk and `downloads` lists them with their paths. |
+| The page as prose, not as controls | `read` strips the navigation and furniture and returns the writing, in slices for a long page. `find` returns a window **centred on** your phrase rather than whichever slice it started in. The snapshot says what you can do; this says what it says. |
+| A download goes nowhere | The browser discards downloads unless something asks for them, so "Export CSV" appeared to do nothing. They save to disk and `downloads` lists them with their paths, and `waitSeconds` waits for one to land, because a download arrives after the click returns. |
 | A bot wall is blocking a page you are allowed to see | `solve` reopens it in a **visible window** so you clear the challenge yourself, then carries on. The profile is persistent, so later runs go straight through headless. It asks the human who is already sitting there; it does not spoof anything. |
 | You are signed in, but the tool is not | `AB_CDP=9224` drives a browser that is already running and already signed in, so every tool works against that session. Closing detaches instead of shutting their browser. |
 
@@ -124,6 +125,10 @@ twenty characters and never had the problem. Both numbers are in the benchmark.
 - WebKit is not tested. Chromium and Firefox are; `AB_BROWSER=firefox` switches engine, and the
   whole browser suite passes on both.
 - Frames are collected up to eight deep in document order; an ad-heavy page with dozens is capped.
+- WebKit is not tested here because this machine is missing its system libraries (`libicu74` and
+  friends). The engine is wired up — `AB_BROWSER=webkit` — but until someone runs it on a box where
+  `npx playwright install-deps webkit` has been applied, it stays listed as untested rather than
+  claimed. Chromium and Firefox both pass the whole suite.
 - `snapshot` describes interactive elements and headings. It is not a reader for prose-heavy pages —
   use `js` for that.
 - `network` starts recording when the server starts driving, so it has nothing from before that.
