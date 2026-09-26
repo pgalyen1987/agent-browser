@@ -263,6 +263,22 @@ test("open() describes the page it navigated, not a popup that page spawns", asy
   await b.tabs({ shut: "framed.html" });   // leave a single tab for the next test
 });
 
+test("open() that fails to navigate does not pass the previous page off as the target", async () => {
+  // Found by dogfooding: opening a PDF made page.goto throw "Download is starting", the browser
+  // stayed on the last site, and open() appended that page's snapshot anyway — so the PDF's URL came
+  // back carrying the previous page's form, refs and login flag, and an agent would then fill a
+  // login form belonging to a page it never left. An invalid URL fails the same way on every engine
+  // (Playwright rejects it before it navigates, so the current page is left in place) without
+  // leaning on engine-specific download behaviour or its wording.
+  await b.open(page("form.html"));            // a real page to be left on
+  const s = await b.open("http://");          // rejected before navigation; the browser does not move
+  assert.match(s, /could not load/);          // the failure is stated
+  assert.doesNotMatch(s, /form "Login"/);     // NOT the previous page's content
+  assert.doesNotMatch(s, /\[e\d+\]/);         // and none of its refs leaked through
+  assert.match(s, /still on .*form\.html/);   // it says where the browser actually is, so a stale
+                                              // snapshot is not mistaken for the page just requested
+});
+
 test("a politely worded CAPTCHA is still named as a wall", async () => {
   // Hit for real on DuckDuckGo: none of the "just a moment" phrasings appear, so it read as an
   // ordinary page with one button and the empty result looked like "no matches".

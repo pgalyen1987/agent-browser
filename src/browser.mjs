@@ -494,6 +494,17 @@ async function settle(p, ms = 2000) {
   }
 }
 
+// Two URLs pointing at the same page, hash aside. Used after a failed navigation to tell "the
+// browser is still on the page it was already on" from "it actually moved".
+function sameLocation(a, b) {
+  try {
+    const x = new URL(a), y = new URL(b);
+    return x.origin === y.origin && x.pathname === y.pathname && x.search === y.search;
+  } catch {
+    return a === b;
+  }
+}
+
 export async function open(url) {
   const p = await session();
   const res = await p.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 }).catch((e) => ({ error: e.message }));
@@ -505,8 +516,24 @@ export async function open(url) {
   // mid-open and open() snapshotted it rather than the page it had just loaded. Switching to a
   // popup is the tabs tool's job, never a silent side effect of open().
   page = p;
-  const status = res?.error ? `could not load: ${res.error.split("\n")[0]}` : res && res.status() >= 400 ? `HTTP ${res.status()}` : "";
-  return (status ? status + "\n" : "") + (await snapshot());
+  // A goto that THREW never arrived. A download aborts the navigation and leaves the old page in
+  // place; an invalid or dead URL is rejected before anything moves. Either way the browser is still
+  // on whatever it showed before, so snapshotting now would describe that PREVIOUS page -- its refs,
+  // its login flag, its form -- under the URL the caller just asked for, and an agent would go on to
+  // fill a "login form" that belongs to a page it never left. Report the failure and where the
+  // browser really is instead of dressing up the last page as this one. (An HTTP 403/404 does NOT
+  // throw -- it resolves with a response -- so a served error or block page still comes through the
+  // branch below, which is exactly where that content belongs.)
+  if (res?.error) {
+    const msg = res.error.split("\n")[0];
+    const at = p.url();
+    const stale = at && !/^(about:|chrome-error:)/.test(at) && !sameLocation(at, url);
+    return `could not load ${url}: ${msg}`
+      + (/download is starting/i.test(msg) ? "\nThat URL is a file download, not a page — fetch it directly rather than opening it." : "")
+      + (stale ? `\nThe browser did not move; it is still on ${at}, so a snapshot now would describe that page, not this URL.` : "");
+  }
+  const status = res.status() >= 400 ? `HTTP ${res.status()}\n` : "";
+  return status + (await snapshot());
 }
 
 /** A snapshot ref or a short description, as a Playwright locator for one visible element. */

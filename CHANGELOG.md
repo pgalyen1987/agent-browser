@@ -3,6 +3,21 @@
 Every entry says what was wrong, because that is the useful half. Numbers are from
 `npm run bench` on the day, against the snapshot Playwright's MCP server sends.
 
+## 0.7.2
+
+- **A navigation that failed came back wearing the previous page.** When `open()`'s `page.goto`
+  threw — a URL that is really a file download (a PDF, a CSV, a zip) aborts the navigation, and an
+  invalid or dead URL is rejected outright — the browser stayed on whatever it was already showing,
+  and `open()` appended a full snapshot of *that* page anyway. So opening a PDF answered with the
+  last site's form, its refs and its "login page" flag under the URL you had just asked for, and an
+  agent would go on to fill a login form belonging to a page it never left. `open()` now, on a thrown
+  navigation, says what failed, names a download for what it is, and states where the browser really
+  still is — and shows no snapshot, because no new page loaded to describe. An HTTP 403/404 is
+  unchanged: it resolves with a response rather than throwing, so a served block or error page still
+  comes back with its content, which is where that belongs. Found by dogfooding: opening a `.pdf`
+  returned the previous site's block page as though it were the PDF. Benchmark re-run and unchanged
+  (this is the error path; the snapshot format did not move).
+
 ## 0.7.1
 
 - **A `mailto:` or `tel:` link read as an ordinary link, so an agent would click it and get nothing.**
