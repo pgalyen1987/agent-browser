@@ -62,6 +62,19 @@ test("a link that will not navigate is flagged; one that will is left lean", asy
   assert.doesNotMatch(s, /About this studio" →/); // relative/same-site: no tail either
 });
 
+test("a control whose ARIA name reference resolves to nothing still gets a name", async () => {
+  // Found by reading the accessible-name fallbacks: aria-labelledby and label[for] returned early
+  // even when the reference resolved to an empty string (a dangling id, or an empty <label>), so
+  // the element came back nameless — a button an agent could neither read nor address by name —
+  // when its own visible text or placeholder was right there. The wrapping-<label> case already
+  // fell through on empty; these two now match it. A resolving reference must still win.
+  const s = await b.open(page("labels.html"));
+  assert.match(s, /\[e\d+\] button "Save changes"/);    // dangling aria-labelledby → own text
+  assert.match(s, /\[e\d+\] button "Pay the invoice"/); // resolving aria-labelledby → referenced text, not "X"
+  assert.match(s, /\[e\d+\] email "Work email"/);       // empty label[for] → placeholder
+  assert.doesNotMatch(s, /button ""/);                  // nothing renders nameless
+});
+
 test("a click under a cookie bar presses Accept; under a chat widget with no close button, hides it", async () => {
   await b.open(page("overlay.html"));
   const out = await b.click('button "Continue to payment"', { snap: false });

@@ -3,6 +3,19 @@
 Every entry says what was wrong, because that is the useful half. Numbers are from
 `npm run bench` on the day, against the snapshot Playwright's MCP server sends.
 
+## 0.7.3
+
+- **A control whose accessible name pointed at a missing or empty node came back nameless.**
+  `aria-labelledby` and `label[for=…]` were trusted even when they resolved to nothing — a typo in
+  an id, or a label node rendered conditionally and then removed — so the snapshot returned an empty
+  name (`[e1] button ""`), leaving a control an agent could neither read nor address by name when the
+  element's own visible text or placeholder was sitting right there (it even leaked into the prose
+  tail). When the reference resolves to an empty string the name now falls through to the element's
+  own text, the way the wrapping-`<label>` case already did; a reference that *does* resolve still
+  wins, so a button labelled by a separate heading is unchanged. Found by reading the fallback chain.
+  Benchmark re-run and unchanged — the five pages resolve their references, so the snapshot format
+  did not move on them.
+
 ## 0.7.2
 
 - **A navigation that failed came back wearing the previous page.** When `open()`'s `page.goto`

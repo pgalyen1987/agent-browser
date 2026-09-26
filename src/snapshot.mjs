@@ -34,11 +34,15 @@ export function collect({ limit = 60, find = "", scope = "", maxText = 400 } = {
   };
   const byId = (id) => { const x = document.getElementById(id); return x ? x.innerText || x.textContent : ""; };
   const label = (el) => {
-    const aria = el.getAttribute("aria-label");
-    if (aria) return clean(aria);
+    const aria = clean(el.getAttribute("aria-label"));
+    if (aria) return aria;
+    // aria-labelledby and label[for] can point at a node that is missing or empty — a typo, or a
+    // node rendered conditionally and then removed. When the reference resolves to nothing, fall
+    // through to the element's own text instead of returning an empty name and leaving a control
+    // an agent can neither read nor address; the wrapping-<label> case below already does this.
     const by = el.getAttribute("aria-labelledby");
-    if (by) return clean(by.split(/\s+/).map(byId).join(" "));
-    if (el.id) { const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`); if (l) return clean(l.innerText); }
+    if (by) { const t = clean(by.split(/\s+/).map(byId).join(" ")); if (t) return t; }
+    if (el.id) { const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`); if (l) { const t = clean(l.innerText); if (t) return t; } }
     const wrap = el.closest("label");
     if (wrap && wrap !== el) {
       // a label wrapping its control also holds the control's own text (a select's options)
