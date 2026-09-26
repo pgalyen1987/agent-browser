@@ -337,3 +337,16 @@ test("read slices a long page and find jumps to the right slice", async () => {
   assert.match(found, /around "Review order" \(character \d+ of \d+\)/);
   assert.match(await b.read({ find: "nothing like this exists here" }), /is not in the/);
 });
+
+test("open survives a navigation that returns no response object", async () => {
+  // goto() returns null when the navigation produced no response of its own — a same-document
+  // jump, and on Firefox a plain file:// load. A rewrite dropped the `res &&` guard on the status
+  // check, and the null dereference that followed failed 25 of 44 tests on Firefox while Chromium
+  // stayed green. A cross-engine gap this wide deserves a test that names it.
+  const s = await b.open(page("form.html"));
+  assert.match(s, /\[e\d+\]/);
+  // Same-document navigation: res is null here on every engine.
+  const again = await b.open(page("form.html") + "#section");
+  assert.doesNotMatch(again, /Cannot read properties/);
+  assert.ok(again.length > 0);
+});

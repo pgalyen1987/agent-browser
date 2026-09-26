@@ -532,7 +532,11 @@ export async function open(url) {
       + (/download is starting/i.test(msg) ? "\nThat URL is a file download, not a page — fetch it directly rather than opening it." : "")
       + (stale ? `\nThe browser did not move; it is still on ${at}, so a snapshot now would describe that page, not this URL.` : "");
   }
-  const status = res.status() >= 400 ? `HTTP ${res.status()}\n` : "";
+  // res IS NULLABLE. Playwright returns null from goto() when the navigation produced no response
+  // of its own — a same-document jump, and on Firefox a file:// load. An earlier version of this
+  // line had a `res &&` guard, a rewrite dropped it, and the result was a null dereference that
+  // Chromium never hit and Firefox hit on every single test: 25 of 44 red, from one missing guard.
+  const status = res && res.status() >= 400 ? `HTTP ${res.status()}\n` : "";
   return status + (await snapshot());
 }
 
