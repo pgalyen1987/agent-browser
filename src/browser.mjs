@@ -83,7 +83,15 @@ export async function session({ fresh = false } = {}) {
     ctx = browser.contexts()[0];
     if (!ctx) throw new Error(`nothing to attach to at ${CDP} — is the browser running with --remote-debugging-port?`);
     attached = true;
-    page = await ctx.newPage();
+    // REUSE A BLANK TAB RATHER THAN ADDING ONE. Every fresh process attaches, and the old code
+    // opened a page each time — driving one flow across a handful of script runs left a row of
+    // empty tabs in someone's real browser, which is its own small rudeness.
+    //
+    // Only a blank tab qualifies. Anything with a URL is work in progress, possibly theirs, and
+    // the promise this feature makes is that it never navigates one of those. A page sitting on
+    // about:blank has nothing to lose.
+    const spare = ctx.pages().find((q) => !q.isClosed() && /^about:blank$/.test(q.url()));
+    page = spare || (await ctx.newPage());
     watch(page);
     ctx.on("page", (q) => { page = q; watch(q); });
     return page;

@@ -92,3 +92,23 @@ test("a dead endpoint fails in words a caller can act on", async (t) => {
   assert.ok(err, "connecting to a dead port unexpectedly succeeded");
   assert.match(err, /9499|ECONNREFUSED|connect/i);
 });
+
+test("a blank tab left by an earlier process is reused, not added to", async (t) => {
+  if (skip) return t.skip("no Chromium available");
+  // The litter came from processes that EXIT WITHOUT CLOSING — each one attached, opened a tab
+  // and went away, so driving one flow across several script runs left a row of empty tabs in a
+  // real person's browser. (A clean close() removes its own tab, so there is nothing to reuse
+  // after one, and opening a fresh tab then is correct.)
+  await ab.close();
+  const view = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`);
+  const ctx = view.contexts()[0];
+  const leftover = await ctx.newPage();          // stands in for a process that exited untidily
+  const before = ctx.pages().length;
+  await ab.open(fixture);                        // the next process attaches
+  const after = ctx.pages().length;
+  assert.equal(after, before, `tab count went ${before} -> ${after}; the blank tab was not reused`);
+  assert.ok(leftover.url().includes("form.html"), "reused a tab but did not navigate it");
+  // And the guarantee that matters is untouched.
+  assert.match(theirPage.url(), /form\.html$/, "their own tab was navigated");
+  await view.close();
+});
