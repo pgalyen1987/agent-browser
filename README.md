@@ -169,6 +169,31 @@ breaks the terms of most sites worth visiting, and it is the fastest way to get 
 else is a race that gets lost on the next update, and it breaks the terms of most sites worth
 visiting.
 
+## What it does with your data
+
+It has no server, no account and no telemetry. Nothing is sent anywhere except to the websites you
+point it at. Specifically:
+
+- **Pages you visit.** Read into memory to build the snapshot, and handed back to whichever MCP
+  client asked. Whatever is on the page — including personal data — reaches your model the same way
+  anything else you paste does. Nothing about the page is kept by this tool beyond the browser
+  profile below.
+- **The browser profile** at `~/.cache/agent-browser/profile` (one per engine). Cookies, local
+  storage and logins, exactly as any browser keeps them, on your machine. `AB_EPHEMERAL=1` throws it
+  away each run; deleting the directory signs everything out.
+- **Credentials.** `fill_secret` reads a named value from your credentials file
+  (`~/.config/rebel-studios/creds.env` by default, `AB_CREDS` to move it) and types it into the
+  page. **The value never appears in the tool's reply**, and later snapshots show the field as
+  `(secret)` rather than its contents — there is a test that fails if it ever leaks. The file is
+  read, never written, and never sent anywhere but the page you directed it to.
+- **Downloads** land in `~/.cache/agent-browser/downloads` (`AB_DOWNLOADS` to move it) and stay
+  there until you remove them.
+- **Screenshots** are returned inline to your client, and written to disk only when you pass a path.
+
+Nothing is transmitted to Rebel Studios. There is no analytics, no crash reporting and no update
+check. The only network traffic is the browser loading what you asked for — and `network` will show
+you exactly what that was.
+
 ## Licence and responsibility
 
 MIT. See [LICENSE](LICENSE).
